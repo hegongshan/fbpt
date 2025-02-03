@@ -1,0 +1,548 @@
+#!/usr/bin/env python3
+import argparse
+import os
+import re
+import shutil
+
+##################################################################
+#                            Constant                            #
+##################################################################
+IMAGE_EXTENSIONS = ('.jpg', '.jpeg',
+                    '.png', '.heic', '.gif')
+VIDEO_EXTENSIONS = ('.mp4', '.avi', '.mov',
+                    '.wmv', '.flv', '.mkv',
+                    '.m4v', '.mpg', '.mpeg')
+AUDIO_EXTENSIONS = ('.mp3', '.wav', '.m4a')
+TEXT_EXTENSIONS = ('.txt', '.doc', '.docx',
+                   '.xls', '.xlsx', '.ppt', '.pptx',
+                   '.pdf', '.rtf', '.odt', '.md')
+ARCHIVE_AND_COMPRESS_EXTENSIONS = ('.rar', '.7z', '.zip',
+                                   '.gz', '.xz', '.tar')
+CODE_EXTENSIONS = ('.c',  # C file
+                   '.cpp', '.cc', '.cxx', '.cp', '.c++',  # C++ files
+                   '.h', '.hpp', '.hxx',  # C/C++ header files
+                   '.java',  # Java file
+                   '.kt',  # Kotlin file
+                   '.scala', '.sc',  # Scala files
+                   '.py',  # Python file
+                   '.rs',  # Rust file
+                   '.rb',  # Ruby file
+                   '.php',  # PHP file
+                   '.html', '.htm',  # HTML files
+                   '.css',  # CSS file
+                   '.js',  # JavaScript file
+                   '.ts',  # TypeScript file
+                   '.sh',  # Shell file
+                   '.bat',  # Batch file
+                   )
+DATA_EXTENSIONS = ('.json', '.csv', '.dat')
+CONFIG_EXTENSIONS = ('.yml', '.yaml', '.xml', '.ini')
+
+COLOR_RED = '\033[91m'
+COLOR_GREEN = '\033[92m'
+COLOR_YELLOW = '\033[93m'
+COLOR_RESET = '\033[0m'
+
+
+##################################################################
+#                            Utility                             #
+##################################################################
+def check_dir(dirname):
+    if not os.path.exists(dirname):
+        print_error(f'Error: {dirname} does not exist!')
+        exit()
+
+
+def check_src_and_make_dest(src_dir, dest_dir):
+    check_dir(src_dir)
+    if not os.path.exists(dest_dir):
+        os.makedirs(dest_dir)
+
+
+def print_success(message):
+    print(f'{COLOR_GREEN}{message}{COLOR_RESET}')
+
+
+def print_warning(message):
+    print(f'{COLOR_YELLOW}{message}{COLOR_RESET}')
+
+
+def print_error(message):
+    print(f'{COLOR_RED}{message}{COLOR_RESET}')
+
+
+##################################################################
+#                    Batch Processing Method                     #
+##################################################################
+def batch_classify_files(rootdir):
+    check_dir(rootdir)
+    for root, _, filenames, in os.walk(rootdir):
+        for filename in filenames:
+            __, file_ext = os.path.splitext(filename)
+            if not file_ext:
+                class_name = 'others'
+            else:
+                file_ext = file_ext.lower()
+                if file_ext in IMAGE_EXTENSIONS:
+                    class_name = 'image'
+                elif file_ext in VIDEO_EXTENSIONS:
+                    class_name = 'video'
+                elif file_ext in AUDIO_EXTENSIONS:
+                    class_name = 'audio'
+                elif file_ext in TEXT_EXTENSIONS:
+                    class_name = 'text'
+                elif file_ext in ARCHIVE_AND_COMPRESS_EXTENSIONS:
+                    class_name = 'compression'
+                elif file_ext in CODE_EXTENSIONS:
+                    class_name = 'code'
+                elif file_ext in DATA_EXTENSIONS:
+                    class_name = 'data'
+                elif file_ext in CONFIG_EXTENSIONS:
+                    class_name = 'config'
+                else:
+                    class_name = 'others'
+
+            class_dir = os.path.join(rootdir, class_name)
+            if not os.path.exists(class_dir):
+                os.mkdir(class_dir)
+            file_path = os.path.join(root, filename)
+            new_path = os.path.join(class_dir, filename)
+            if file_path != new_path:
+                shutil.move(file_path, new_path)
+
+
+def batch_rename_files(rootdir, prefix, recursive=False, pattern=None, verbose=False):
+    check_dir(rootdir)
+    idx = 0
+    for filename in os.listdir(rootdir):
+        if pattern and not re.search(pattern, filename, re.IGNORECASE):
+            continue
+        _, ext = os.path.splitext(filename)
+        new_name = os.path.join(rootdir, f'{prefix}_{idx}{ext}')
+
+        old_name = os.path.join(rootdir, filename)
+        if recursive and os.path.isdir(old_name):
+            batch_rename_files(old_name, prefix,
+                               recursive=recursive,
+                               pattern=pattern,
+                               verbose=verbose)
+
+        if verbose:
+            print(f'replace "{filename}" with "{new_name}"')
+        os.rename(old_name, new_name)
+        idx += 1
+
+
+def batch_create_files(rootdir, count, prefix, mkdir=False, ext=None):
+    if not os.path.exists(rootdir):
+        os.makedirs(rootdir)
+    for i in range(count):
+        filename = f'{prefix}_{i}'
+        if ext:
+            filename += ext
+        pathname = os.path.join(rootdir, filename)
+        if mkdir:
+            os.mkdir(pathname)
+        else:
+            open(pathname, 'w+').close()
+
+
+def batch_remove_files(rootdir, recursive=False, pattern=None, verbose=False):
+    batch_remove_files_internal(rootdir,
+                                recursive=recursive,
+                                pattern=pattern,
+                                verbose=verbose)
+    if recursive and len(os.listdir(rootdir)) == 0:
+        os.rmdir(rootdir)
+
+
+def batch_remove_files_internal(rootdir, recursive=False, pattern=None, verbose=False):
+    check_dir(rootdir)
+    for filename in os.listdir(rootdir):
+        pathname = os.path.join(rootdir, filename)
+        if os.path.isdir(pathname):
+            if not recursive:
+                continue
+            if pattern and re.search(pattern, pathname):
+                if verbose:
+                    print(f'Remove dir: {pathname}')
+                shutil.rmtree(pathname)
+            else:
+                batch_remove_files_internal(pathname,
+                                            recursive=recursive,
+                                            pattern=pattern,
+                                            verbose=verbose)
+        else:
+            if pattern and re.search(pattern, pathname):
+                if verbose:
+                    print(f'Remove file: {pathname}')
+                os.remove(pathname)
+
+
+def batch_copy_files(src_dir, dest_dir, pattern=None, verbose=False):
+    check_src_and_make_dest(src_dir, dest_dir)
+    for filename in os.listdir(src_dir):
+        if pattern and not re.search(pattern, filename):
+            continue
+        old_path_name = os.path.join(src_dir, filename)
+        new_path_name = os.path.join(dest_dir, filename)
+        if os.path.isdir(old_path_name):
+            if os.path.exists(new_path_name):
+                print_warning(f'Destination path \'{new_path_name}\' already exists')
+            else:
+                if verbose:
+                    print(f'Copy dir: {old_path_name}')
+                shutil.copytree(old_path_name, new_path_name)
+        else:
+            if verbose:
+                print(f'Copy file: {old_path_name}')
+            shutil.copyfile(old_path_name, new_path_name)
+
+
+def batch_move_files(src_dir, dest_dir, pattern=None, verbose=False):
+    check_src_and_make_dest(src_dir, dest_dir)
+    any_match = False
+    for filename in os.listdir(src_dir):
+        if pattern and not re.search(pattern, filename):
+            continue
+        any_match = True
+        src_path = os.path.join(src_dir, filename)
+        dest_path = os.path.join(dest_dir, filename)
+        if os.path.exists(dest_path):
+            print_warning(f'Destination path \'{dest_path}\' already exists.')
+        else:
+            if verbose:
+                print(f'Move \'{src_path}\' to \'{dest_path}\'')
+            shutil.move(src_path, dest_dir)
+
+    if not any_match:
+        print(f'None of the paths match the pattern: {pattern}')
+
+
+def batch_split_files_by_line(src_dir, dest_dir, line_count, verbose=False):
+    check_src_and_make_dest(src_dir, dest_dir)
+    for filename in os.listdir(src_dir):
+        if filename.startswith('.'):
+            continue
+
+        pathname = os.path.join(src_dir, filename)
+        with open(pathname, 'r') as file:
+            lines = file.readlines()
+            chunk_count = (len(lines) + line_count - 1) // line_count
+            for chunk_id in range(chunk_count):
+                chunk_path_name = os.path.join(dest_dir, f'{filename}_chunk{chunk_id}')
+                with open(chunk_path_name, 'w+') as chunk_file:
+                    chunk_file.writelines(lines[chunk_id * line_count: (chunk_id + 1) * line_count])
+                    if verbose:
+                        print(f'split: {pathname}, chunk id: {chunk_id}')
+
+
+def batch_split_files_by_byte(src_dir, dest_dir, chunk_size, verbose=False):
+    check_src_and_make_dest(src_dir, dest_dir)
+    for filename in os.listdir(src_dir):
+        pathname = os.path.join(src_dir, filename)
+        file_size = os.path.getsize(pathname)
+        chunk_number = (file_size + chunk_size - 1) // chunk_size
+
+        with open(pathname, 'rb') as file:
+            for chunk_id in range(chunk_number):
+                chunk_pathname = os.path.join(dest_dir, f'{filename}_chunk{chunk_id}')
+                chunk_data = file.read(chunk_size)
+                with open(chunk_pathname, 'wb') as chunk_file:
+                    chunk_file.write(chunk_data)
+                    if verbose:
+                        print(f'split: {pathname}, chunk id: {chunk_id}')
+
+
+def batch_merge_files(src_dir, output_file, pattern=None, verbose=False):
+    check_dir(src_dir)
+    with open(output_file, 'wb') as outfile:
+        for filename in os.listdir(src_dir):
+            if pattern and not re.search(pattern, filename, re.IGNORECASE):
+                continue
+
+            pathname = os.path.join(src_dir, filename)
+            if verbose:
+                print(f'merge {pathname}')
+
+            with open(pathname, 'rb') as infile:
+                outfile.write(infile.read())
+
+
+def batch_chmod(rootdir, mode, recursive=False, pattern=None, verbose=False):
+    check_dir(rootdir)
+    for filename in os.listdir(rootdir):
+        if pattern and not re.search(pattern, filename, re.IGNORECASE):
+            continue
+        pathname = os.path.join(rootdir, filename)
+        if recursive and os.path.isdir(pathname):
+            batch_chmod(pathname, mode,
+                        recursive=recursive,
+                        pattern=pattern,
+                        verbose=verbose)
+        if verbose:
+            print(f'chmod {mode} {pathname}')
+        os.chmod(pathname, int(mode, 8))
+
+
+def batch_find_files(rootdir, keyword):
+    check_dir(rootdir)
+    for filename in os.listdir(rootdir):
+        pathname = os.path.join(rootdir, filename)
+        if os.path.isdir(pathname):
+            batch_find_files(pathname, keyword)
+        else:
+            if re.search(keyword, filename, re.IGNORECASE):
+                print(pathname)
+
+
+def batch_check_files(rootdir, pattern):
+    check_dir(rootdir)
+    all_match = True
+    for filename in os.listdir(rootdir):
+        pathname = os.path.join(rootdir, filename)
+        if os.path.isdir(filename):
+            batch_check_files(pathname, pattern)
+        else:
+            if not re.fullmatch(pattern, filename, re.IGNORECASE):
+                print_error(f'{pathname} does not match!')
+                all_match = False
+    if all_match:
+        print_success('PASS')
+
+
+def main():
+    parser = argparse.ArgumentParser(description='File batch processing tool (fbpt)')
+    subparsers = parser.add_subparsers(dest='subcommand', help='subcommand')
+
+    # classify options
+    classify_parser = subparsers.add_parser('classify', help='Batch classify file')
+    classify_parser.add_argument('-r', '--rootdir',
+                                 type=str,
+                                 required=True,
+                                 help='Root directory')
+
+    # rename options
+    rename_parser = subparsers.add_parser('rename', help='Batch rename file')
+    rename_parser.add_argument('-r', '--rootdir',
+                               type=str,
+                               required=True,
+                               help='Root directory')
+    rename_parser.add_argument('-p', '--prefix',
+                               type=str,
+                               required=True,
+                               help='File name prefix')
+    rename_parser.add_argument('-P', '--pattern',
+                               type=str,
+                               help='Pattern')
+    rename_parser.add_argument('-R', '--recursive',
+                               action='store_true',
+                               help='Recursive traversal')
+    rename_parser.add_argument('-v', '--verbose',
+                               action='store_true',
+                               help='Verbose mode')
+
+    # create options
+    create_parser = subparsers.add_parser('create', help='Batch create file')
+    create_parser.add_argument('-r', '--rootdir',
+                               type=str,
+                               required=True,
+                               help='Root directory')
+    create_parser.add_argument('-c', '--count',
+                               type=int,
+                               required=True,
+                               help='Number of files/dirs')
+    create_parser.add_argument('-p', '--prefix',
+                               type=str,
+                               required=True,
+                               help='File name prefix')
+    create_group = create_parser.add_mutually_exclusive_group()
+    create_group.add_argument('-m', '--mkdir',
+                              action='store_true',
+                              help='Create directory (In default, create file)')
+    create_group.add_argument('-e', '--ext',
+                              type=str,
+                              help='File extension')
+
+    # remove options
+    remove_parser = subparsers.add_parser('remove', help='Batch remove file')
+    remove_parser.add_argument('-r', '--rootdir',
+                               type=str,
+                               required=True,
+                               help='Root directory')
+    remove_parser.add_argument('-R', '--recursive',
+                               action='store_true',
+                               help='Recursive traversal')
+    remove_parser.add_argument('-p', '--pattern',
+                               type=str,
+                               help='Pattern')
+    remove_parser.add_argument('-v', '--verbose',
+                               action='store_true',
+                               help='Verbose mode')
+
+    # copy options
+    copy_parser = subparsers.add_parser('copy', help='Batch copy file')
+    copy_parser.add_argument('-s', '--src',
+                             type=str,
+                             required=True,
+                             help='Source directory')
+    copy_parser.add_argument('-d', '--dest',
+                             type=str,
+                             required=True,
+                             help='Destination directory')
+    copy_parser.add_argument('-p', '--pattern',
+                             type=str,
+                             help='Pattern')
+    copy_parser.add_argument('-v', '--verbose',
+                             action='store_true',
+                             help='Verbose mode')
+
+    # move options
+    move_parser = subparsers.add_parser('move', help='Batch move file')
+    move_parser.add_argument('-s', '--src',
+                             type=str,
+                             required=True,
+                             help='Source directory')
+    move_parser.add_argument('-d', '--dest',
+                             type=str,
+                             required=True,
+                             help='Destination directory')
+    move_parser.add_argument('-p', '--pattern',
+                             type=str,
+                             help='Pattern')
+    move_parser.add_argument('-v', '--verbose',
+                             action='store_true',
+                             help='Verbose mode')
+
+    # split options
+    split_parser = subparsers.add_parser('split', help='Batch split file')
+    split_parser.add_argument('-s', '--src',
+                              type=str,
+                              required=True,
+                              help='Source directory')
+    split_parser.add_argument('-d', '--dest',
+                              type=str,
+                              required=True,
+                              help='Destination directory')
+    split_group = split_parser.add_mutually_exclusive_group(required=True)
+    split_group.add_argument('-l', '--line',
+                             type=int,
+                             help='Line count')
+    split_group.add_argument('-c', '--chunksize',
+                             type=int,
+                             help='Chunk Size (in byte)')
+    split_parser.add_argument('-v', '--verbose',
+                              action='store_true',
+                              help='Verbose mode')
+
+    # merge options
+    merge_parser = subparsers.add_parser('merge', help='Batch merge file')
+    merge_parser.add_argument('-s', '--src',
+                              type=str,
+                              required=True,
+                              help='Source directory')
+    merge_parser.add_argument('-o', '--output',
+                              type=str,
+                              required=True,
+                              help='Output file')
+    merge_parser.add_argument('-p', '--pattern',
+                              type=str,
+                              help='Pattern.')
+    merge_parser.add_argument('-v', '--verbose',
+                              action='store_true',
+                              help='Verbose mode')
+
+    # chmod options
+    chmod_parser = subparsers.add_parser('chmod', help='Batch chmod')
+    chmod_parser.add_argument('-r', '--rootdir',
+                              type=str,
+                              required=True,
+                              help='Root directory')
+    chmod_parser.add_argument('-m', '--mode',
+                              type=str,
+                              required=True,
+                              help='Mode')
+    chmod_parser.add_argument('-R', '--recursive',
+                              action='store_true',
+                              help='Recursive traversal')
+    chmod_parser.add_argument('-p', '--pattern',
+                              type=str,
+                              help='Pattern.')
+    chmod_parser.add_argument('-v', '--verbose',
+                              action='store_true',
+                              help='Verbose mode')
+
+    # find options
+    find_parser = subparsers.add_parser('find', help='Batch find')
+    find_parser.add_argument('-r', '--rootdir',
+                             type=str,
+                             required=True,
+                             help='Root directory')
+    find_parser.add_argument('-p', '--pattern',
+                             type=str,
+                             required=True,
+                             help='Pattern')
+
+    # check options
+    check_parser = subparsers.add_parser('check', help='Batch check')
+    check_parser.add_argument('-r', '--rootdir',
+                              type=str,
+                              required=True,
+                              help='Root directory')
+    check_parser.add_argument('-p', '--pattern',
+                              type=str,
+                              required=True,
+                              help='Pattern')
+
+    args = parser.parse_args()
+
+    if args.subcommand == 'classify':
+        batch_classify_files(args.rootdir)
+    elif args.subcommand == 'rename':
+        batch_rename_files(args.rootdir, args.prefix,
+                           recursive=args.recursive,
+                           pattern=args.pattern,
+                           verbose=args.verbose)
+    elif args.subcommand == 'create':
+        batch_create_files(args.rootdir, args.count, args.prefix,
+                           mkdir=args.mkdir,
+                           ext=args.ext)
+    elif args.subcommand == 'remove':
+        batch_remove_files(args.rootdir,
+                           recursive=args.recursive,
+                           pattern=args.pattern,
+                           verbose=args.verbose)
+    elif args.subcommand == 'copy':
+        batch_copy_files(args.src, args.dest,
+                         pattern=args.pattern,
+                         verbose=args.verbose)
+    elif args.subcommand == 'move':
+        batch_move_files(args.src, args.dest,
+                         pattern=args.pattern,
+                         verbose=args.verbose)
+    elif args.subcommand == 'split':
+        if args.line:
+            batch_split_files_by_line(args.src, args.dest,
+                                      args.line, verbose=args.verbose)
+        else:
+            batch_split_files_by_byte(args.src, args.dest,
+                                      args.chunksize, verbose=args.verbose)
+    elif args.subcommand == 'merge':
+        batch_merge_files(args.src, args.output,
+                          pattern=args.pattern,
+                          verbose=args.verbose)
+    elif args.subcommand == 'chmod':
+        batch_chmod(args.rootdir, args.mode,
+                    recursive=args.recursive,
+                    pattern=args.pattern,
+                    verbose=args.verbose)
+    elif args.subcommand == 'find':
+        batch_find_files(args.rootdir, args.pattern)
+    elif args.subcommand == 'check':
+        batch_check_files(args.rootdir, args.pattern)
+    else:
+        print_error(f'Error: A subcommand is required.')
+
+
+if __name__ == '__main__':
+    main()
