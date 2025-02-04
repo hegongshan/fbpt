@@ -53,10 +53,14 @@ def check_dir(dirname):
         exit()
 
 
+def makedirs_if_not_exists(dirname):
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+
+
 def check_src_and_make_dest(src_dir, dest_dir):
     check_dir(src_dir)
-    if not os.path.exists(dest_dir):
-        os.makedirs(dest_dir)
+    makedirs_if_not_exists(dest_dir)
 
 
 def print_success(message):
@@ -133,18 +137,28 @@ def batch_rename_files(rootdir, prefix, recursive=False, pattern=None, verbose=F
         idx += 1
 
 
-def batch_create_files(rootdir, count, prefix, mkdir=False, ext=None):
-    if not os.path.exists(rootdir):
-        os.makedirs(rootdir)
+def batch_create_files(rootdir, count, prefix, ext=None):
+    makedirs_if_not_exists(rootdir)
     for i in range(count):
         filename = f'{prefix}_{i}'
         if ext:
             filename += ext
         pathname = os.path.join(rootdir, filename)
-        if mkdir:
-            os.mkdir(pathname)
-        else:
-            open(pathname, 'w+').close()
+        open(pathname, 'w+').close()
+
+
+def batch_mkdir(rootdir, count, prefix, level=1):
+    makedirs_if_not_exists(rootdir)
+    dirs = [rootdir]
+    for cur_level in range(level):
+        new_dirs = []
+        for dirname in dirs:
+            for idx in range(count):
+                cur_prefix = prefix if cur_level == 0 else os.path.basename(dirname)
+                dirpath = os.path.join(dirname, f'{cur_prefix}_{idx}')
+                os.mkdir(dirpath)
+                new_dirs.append(dirpath)
+        dirs = new_dirs
 
 
 def batch_remove_files(rootdir, recursive=False, pattern=None, verbose=False):
@@ -351,18 +365,33 @@ def main():
     create_parser.add_argument('-c', '--count',
                                type=int,
                                required=True,
-                               help='Number of files/dirs')
+                               help='Number of files')
     create_parser.add_argument('-p', '--prefix',
                                type=str,
                                required=True,
                                help='File name prefix')
-    create_group = create_parser.add_mutually_exclusive_group()
-    create_group.add_argument('-m', '--mkdir',
-                              action='store_true',
-                              help='Create directory (In default, create file)')
-    create_group.add_argument('-e', '--ext',
+    create_parser.add_argument('-e', '--ext',
+                               type=str,
+                               help='File extension')
+
+    # mkdir options
+    mkdir_parser = subparsers.add_parser('mkdir', help='Batch create directory')
+    mkdir_parser.add_argument('-r', '--rootdir',
                               type=str,
-                              help='File extension')
+                              required=True,
+                              help='Root directory')
+    mkdir_parser.add_argument('-c', '--count',
+                              type=int,
+                              required=True,
+                              help='Number of dirs')
+    mkdir_parser.add_argument('-l', '--level',
+                              type=int,
+                              default=1,
+                              help='Directory Level')
+    mkdir_parser.add_argument('-p', '--prefix',
+                              type=str,
+                              required=True,
+                              help='File name prefix')
 
     # remove options
     remove_parser = subparsers.add_parser('remove', help='Batch remove file')
@@ -505,8 +534,9 @@ def main():
                            verbose=args.verbose)
     elif args.subcommand == 'create':
         batch_create_files(args.rootdir, args.count, args.prefix,
-                           mkdir=args.mkdir,
                            ext=args.ext)
+    elif args.subcommand == 'mkdir':
+        batch_mkdir(args.rootdir, args.count, args.prefix, level=args.level)
     elif args.subcommand == 'remove':
         batch_remove_files(args.rootdir,
                            recursive=args.recursive,
