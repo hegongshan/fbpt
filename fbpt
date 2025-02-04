@@ -167,6 +167,8 @@ def batch_remove_files(rootdir, recursive=False, pattern=None, verbose=False):
                                 pattern=pattern,
                                 verbose=verbose)
     if recursive and len(os.listdir(rootdir)) == 0:
+        if verbose:
+            print(f'Remove rootdir: {rootdir}')
         os.rmdir(rootdir)
 
 
@@ -174,10 +176,11 @@ def batch_remove_files_internal(rootdir, recursive=False, pattern=None, verbose=
     check_dir(rootdir)
     for filename in os.listdir(rootdir):
         pathname = os.path.join(rootdir, filename)
+        match_pattern = pattern and re.search(pattern, pathname)
         if os.path.isdir(pathname):
             if not recursive:
                 continue
-            if pattern and re.search(pattern, pathname):
+            if not pattern or match_pattern:
                 if verbose:
                     print(f'Remove dir: {pathname}')
                 shutil.rmtree(pathname)
@@ -187,7 +190,7 @@ def batch_remove_files_internal(rootdir, recursive=False, pattern=None, verbose=
                                             pattern=pattern,
                                             verbose=verbose)
         else:
-            if pattern and re.search(pattern, pathname):
+            if not pattern or match_pattern:
                 if verbose:
                     print(f'Remove file: {pathname}')
                 os.remove(pathname)
