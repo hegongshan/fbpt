@@ -196,6 +196,27 @@ def batch_remove_files_internal(rootdir, recursive=False, pattern=None, verbose=
                 os.remove(pathname)
 
 
+def batch_write_files(rootdir, content,
+                      append=False, recursive=False,
+                      pattern=None, verbose=False):
+    check_dir(rootdir)
+    mode = 'a' if append else 'w'
+    for filename in os.listdir(rootdir):
+        pathname = os.path.join(rootdir, filename)
+        if os.path.isdir(pathname):
+            if recursive:
+                batch_write_files(pathname, content,
+                                  append=append, recursive=recursive,
+                                  pattern=pattern, verbose=verbose)
+        else:
+            if pattern and not re.search(pattern, filename):
+                continue
+            if verbose:
+                print(f'Write file: {pathname}')
+            with open(pathname, mode) as file:
+                file.write(content)
+
+
 def batch_copy_files(src_dir, dest_dir, pattern=None, verbose=False):
     check_src_and_make_dest(src_dir, dest_dir)
     for filename in os.listdir(src_dir):
@@ -412,6 +433,29 @@ def main():
                                action='store_true',
                                help='Verbose mode')
 
+    # write options
+    write_parser = subparsers.add_parser('write', help='Batch write file')
+    write_parser.add_argument('-r', '--rootdir',
+                              type=str,
+                              required=True,
+                              help='Root directory')
+    write_parser.add_argument('-c', '--content',
+                              type=str,
+                              required=True,
+                              help='File content')
+    write_parser.add_argument('-a', '--append',
+                              action='store_true',
+                              help="Append mode (By default, overwrite mode is used.)")
+    write_parser.add_argument('-R', '--recursive',
+                              action='store_true',
+                              help='Recursive traversal')
+    write_parser.add_argument('-p', '--pattern',
+                              type=str,
+                              help='Pattern')
+    write_parser.add_argument('-v', '--verbose',
+                              action='store_true',
+                              help='Verbose mode')
+
     # copy options
     copy_parser = subparsers.add_parser('copy', help='Batch copy file')
     copy_parser.add_argument('-s', '--src',
@@ -545,6 +589,13 @@ def main():
                            recursive=args.recursive,
                            pattern=args.pattern,
                            verbose=args.verbose)
+    elif args.subcommand == 'write':
+        batch_write_files(args.rootdir,
+                          content=args.content,
+                          append=args.append,
+                          recursive=args.recursive,
+                          pattern=args.pattern,
+                          verbose=args.verbose)
     elif args.subcommand == 'copy':
         batch_copy_files(args.src, args.dest,
                          pattern=args.pattern,
