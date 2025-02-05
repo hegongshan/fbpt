@@ -10,9 +10,14 @@ import zipfile
 from collections import defaultdict
 from datetime import datetime
 
+import markdown
+import pandas as pd
+from PIL import Image
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from pdf2docx import Converter
+from win32com import client as wc
 
 ##################################################################
 #                            Constant                            #
@@ -33,6 +38,29 @@ FILE_CATEGORIES = {
                         '.bat'],
     'DATA_EXTENSIONS': ['.json', '.csv', '.dat'],
     'CONFIG_EXTENSIONS': ['.yml', '.yaml', '.xml', '.ini']
+}
+
+CONVERSION_MAP = {
+    'image': {
+        'extensions': ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp'],
+        'target_ext': '.png'
+    },
+    'pdf_to_docx': {
+        'extensions': ['.pdf'],
+        'target_ext': '.docx'
+    },
+    'word_to_pdf': {
+        'extensions': ['.doc', '.docx'],
+        'target_ext': '.pdf'
+    },
+    'excel_to_csv': {
+        'extensions': ['.xls', '.xlsx'],
+        'target_ext': '.csv'
+    },
+    'md_to_html': {
+        'extensions': ['.md'],
+        'target_ext': '.html'
+    }
 }
 
 COLOR_RED = '\033[91m'
@@ -95,17 +123,14 @@ def classify_by_file_type(ext):
 
 def batch_classify_files(rootdir, rules):
     check_dir(rootdir)
-
     for root, _, files in os.walk(rootdir):
         for filename in files:
             src = os.path.join(root, filename)
             if not os.path.isfile(src):
                 continue
-
             path_parts = []
             ext = os.path.splitext(filename)[1].lower()
             size = os.path.getsize(src)
-
             for rule in rules:
                 if rule['type'] == 'time':
                     path_parts.append(classify_by_time(src, rule['format']))
@@ -113,11 +138,9 @@ def batch_classify_files(rootdir, rules):
                     path_parts.append(classify_by_size(size))
                 elif rule['type'] == 'file_type':
                     path_parts.append(classify_by_file_type(ext))
-
             dest_dir = os.path.join(rootdir, *path_parts)
             os.makedirs(dest_dir, exist_ok=True)
             dest = os.path.join(dest_dir, filename)
-
             if src != dest:
                 try:
                     shutil.move(src, dest)
@@ -143,10 +166,7 @@ def batch_rename_files(rootdir, prefix, recursive=False, pattern=None, verbose=F
         new_name = os.path.join(rootdir, f'{prefix}_{idx}{ext}')
         old_name = os.path.join(rootdir, filename)
         if recursive and os.path.isdir(old_name):
-            batch_rename_files(old_name, prefix,
-                               recursive=recursive,
-                               pattern=pattern,
-                               verbose=verbose)
+            batch_rename_files(old_name, prefix, recursive=recursive, pattern=pattern, verbose=verbose)
         if verbose:
             print(f'replace "{filename}" with "{new_name}"')
         os.rename(old_name, new_name)
@@ -168,10 +188,7 @@ def batch_create_files(rootdir, count, prefix, mkdir=False, ext=None):
 
 
 def batch_remove_files(rootdir, recursive=False, pattern=None, verbose=False):
-    batch_remove_files_internal(rootdir,
-                                recursive=recursive,
-                                pattern=pattern,
-                                verbose=verbose)
+    batch_remove_files_internal(rootdir, recursive=recursive, pattern=pattern, verbose=verbose)
     if recursive and len(os.listdir(rootdir)) == 0:
         os.rmdir(rootdir)
 
@@ -188,10 +205,7 @@ def batch_remove_files_internal(rootdir, recursive=False, pattern=None, verbose=
                     print(f'Remove dir: {pathname}')
                 shutil.rmtree(pathname)
             else:
-                batch_remove_files_internal(pathname,
-                                            recursive=recursive,
-                                            pattern=pattern,
-                                            verbose=verbose)
+                batch_remove_files_internal(pathname, recursive=recursive, pattern=pattern, verbose=verbose)
         else:
             if pattern and re.search(pattern, pathname):
                 if verbose:
@@ -291,10 +305,7 @@ def batch_chmod(rootdir, mode, recursive=False, pattern=None, verbose=False):
             continue
         pathname = os.path.join(rootdir, filename)
         if recursive and os.path.isdir(pathname):
-            batch_chmod(pathname, mode,
-                        recursive=recursive,
-                        pattern=pattern,
-                        verbose=verbose)
+            batch_chmod(pathname, mode, recursive=recursive, pattern=pattern, verbose=verbose)
         if verbose:
             print(f'chmod {mode} {pathname}')
         os.chmod(pathname, int(mode, 8))
@@ -336,17 +347,14 @@ def file_hash_func(filepath, block_size=65536):
 
 def batch_deduplicate(rootdir, action='delete', dry_run=False):
     check_dir(rootdir)
-
     hashes = defaultdict(list)
     total_saved = 0
-
     for root, _, files in os.walk(rootdir):
         for filename in files:
             filepath = os.path.join(root, filename)
             if os.path.isfile(filepath):
                 hash_val = file_hash_func(filepath)
                 hashes[hash_val].append(filepath)
-
     for hash_value, files in hashes.items():
         if len(files) > 1:
             print_warning(f"发现重复文件 (SHA256: {hash_value[:8]}...)")
@@ -365,14 +373,12 @@ def batch_deduplicate(rootdir, action='delete', dry_run=False):
                     os.makedirs(dup_dir, exist_ok=True)
                     shutil.move(dup, os.path.join(dup_dir, os.path.basename(dup)))
                 print(f"已处理: {dup}")
-
     print_success(f"去重完成，共释放空间: {total_saved / 1024 / 1024:.2f} MB")
 
 
 def calculate_entropy(file_path):
     counts = defaultdict(int)
     total = 0
-
     try:
         with open(file_path, 'rb') as f:
             data = f.read()
@@ -384,7 +390,6 @@ def calculate_entropy(file_path):
     except Exception as e:
         print_error(f"Error reading {file_path}: {str(e)}")
         return 0.0
-
     entropy = 0.0
     for count in counts.values():
         p = count / total
@@ -453,6 +458,87 @@ def decrypt_file(input_path, output_path, password):
         raise ValueError("解密失败，密码错误或文件已损坏") from e
     with open(output_path, 'wb') as f:
         f.write(decrypted)
+
+
+def convert_image_format(source_file, target_file, target_format='PNG'):
+    try:
+        with Image.open(source_file) as img:
+            img.save(target_file, format=target_format)
+        print(f"Converted image {source_file} to {target_format} format and saved as {target_file}.")
+    except Exception as e:
+        print(f"Failed to convert image {source_file} to {target_format}: {str(e)}")
+
+
+def pdf_to_docx(source_file, target_file):
+    try:
+        cv = Converter(source_file)
+        cv.convert(target_file, start=0, end=None)
+        cv.close()
+        print(f"Converted PDF {source_file} to Docx.")
+    except Exception as e:
+        print(f"Failed to convert PDF {source_file} to Docx: {str(e)}")
+
+
+def word_to_pdf(source_file, target_file):
+    try:
+        word = wc.Dispatch('Word.Application')
+        doc = word.Documents.Open(os.path.abspath(source_file))
+        doc.SaveAs(os.path.abspath(target_file), FileFormat=17)
+        doc.Close()
+        word.Quit()
+        print(f"Converted Word {source_file} to PDF.")
+    except Exception as e:
+        print(f"Failed to convert Word {source_file} to PDF: {str(e)}")
+
+
+def excel_to_csv(source_file, target_file):
+    try:
+        df = pd.read_excel(source_file)
+        df.to_csv(target_file, index=False)
+        print(f"Converted Excel {source_file} to CSV.")
+    except Exception as e:
+        print(f"Failed to convert Excel {source_file} to CSV: {str(e)}")
+
+
+def markdown_to_html(source_file, target_file):
+    try:
+        with open(source_file, 'r', encoding='utf-8') as f:
+            text = f.read()
+        html = markdown.markdown(text)
+        with open(target_file, 'w', encoding='utf-8') as f:
+            f.write(html)
+        print(f"Converted Markdown {source_file} to HTML.")
+    except Exception as e:
+        print(f"Failed to convert Markdown {source_file} to HTML: {str(e)}")
+
+
+def batch_convert_files(source_dir, target_dir, conversion_type, format='PNG', recursive=False):
+    if not os.path.exists(target_dir):
+        os.makedirs(target_dir)
+    for root, dirs, files in os.walk(source_dir):
+        if not recursive and root != source_dir:
+            continue
+        for file in files:
+            source_file = os.path.join(root, file)
+            file_ext = os.path.splitext(file)[1].lower()
+            config = CONVERSION_MAP.get(conversion_type)
+            if config is None:
+                print_error(f"Unsupported conversion type: {conversion_type}")
+                return
+            if file_ext in config['extensions']:
+                target_file_name = f"{os.path.splitext(file)[0]}{config['target_ext']}"
+                target_file = os.path.join(target_dir, target_file_name)
+                print(f"Converting {source_file} to {target_file} using {conversion_type}")
+                if conversion_type == 'image':
+                    convert_image_format(source_file, target_file, format)
+                elif conversion_type == 'pdf_to_docx':
+                    pdf_to_docx(source_file, target_file)
+                elif conversion_type == 'word_to_pdf':
+                    word_to_pdf(source_file, target_file)
+                elif conversion_type == 'excel_to_csv':
+                    excel_to_csv(source_file, target_file)
+                elif conversion_type == 'md_to_html':
+                    markdown_to_html(source_file, target_file)
 
 
 ##################################################################
@@ -544,11 +630,11 @@ def main():
     check_parser.add_argument('-r', '--rootdir', type=str, required=True, help='Root directory')
     check_parser.add_argument('-p', '--pattern', type=str, required=True, help='Pattern')
 
-    # reduplicate options
-    reduplicate_parser = subparsers.add_parser('reduplicate', help='Batch reduplicate')
-    reduplicate_parser.add_argument('-r', '--rootdir', type=str, required=True, help='Root directory')
-    reduplicate_parser.add_argument('-a', '--action', type=str, default='delete', help='Action: delete or move')
-    reduplicate_parser.add_argument('-d', '--dry_run', action='store_true', help='Dry-run mode')
+    # deduplicate options
+    deduplicate_parser = subparsers.add_parser('deduplicate', help='Batch deduplicate')
+    deduplicate_parser.add_argument('-r', '--rootdir', type=str, required=True, help='Root directory')
+    deduplicate_parser.add_argument('-a', '--action', type=str, default='delete', help='Action: delete or move')
+    deduplicate_parser.add_argument('-d', '--dry_run', action='store_true', help='Dry-run mode')
 
     # compress options
     compress_parser = subparsers.add_parser('compress', help='Compress files based on entropy analysis')
@@ -560,6 +646,18 @@ def main():
     compress_parser.add_argument('-v', '--verbose', action='store_true',
                                  help='Show detailed processing information')
 
+    # convert options
+    convert_parser = subparsers.add_parser('convert', help='Batch convert files')
+    convert_parser.add_argument('-s', '--src', type=str, required=True, help='Source directory to convert')
+    convert_parser.add_argument('-d', '--dest', type=str, required=True,
+                                help='Destination directory for converted files')
+    convert_parser.add_argument('-t', '--type', type=str, required=True, choices=list(CONVERSION_MAP.keys()),
+                                help='Conversion type: ' + ', '.join(list(CONVERSION_MAP.keys())))
+    convert_parser.add_argument('--format', default='PNG',
+                                help='For image conversion, specify target format (e.g., PNG, JPEG, BMP)')
+    convert_parser.add_argument('-r', '--recursive', action='store_true',
+                                help='Recursively convert files in subdirectories')
+
     args = parser.parse_args()
 
     if not args.subcommand:
@@ -568,7 +666,6 @@ def main():
         exit(1)
 
     if args.subcommand == 'classify':
-        # Parse classification rules from command-line rules
         rules = []
         for rule in args.rules:
             if rule.startswith('time:'):
@@ -625,7 +722,7 @@ def main():
         batch_find_files(args.rootdir, args.pattern)
     elif args.subcommand == 'check':
         batch_check_files(args.rootdir, args.pattern)
-    elif args.subcommand == 'reduplicate':
+    elif args.subcommand == 'deduplicate':
         batch_deduplicate(args.rootdir, action=args.action, dry_run=args.dry_run)
     elif args.subcommand == 'compress':
         batch_compress_files(
@@ -635,6 +732,14 @@ def main():
             verbose=args.verbose
         )
         print_success("Compression completed successfully")
+    elif args.subcommand == 'convert':
+        batch_convert_files(
+            args.src,
+            args.dest,
+            conversion_type=args.type,
+            format=args.format.upper(),
+            recursive=args.recursive
+        )
     else:
         print_error('Error: Invalid subcommand.')
 
