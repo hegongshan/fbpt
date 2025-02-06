@@ -18,7 +18,6 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from pdf2docx import Converter
 
-
 ##################################################################
 #                            Constant                            #
 ##################################################################
@@ -78,10 +77,14 @@ def check_dir(dirname):
         exit(1)
 
 
+def makedirs_if_not_exists(dirname):
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+
+
 def check_src_and_make_dest(src_dir, dest_dir):
     check_dir(src_dir)
-    if not os.path.exists(dest_dir):
-        os.makedirs(dest_dir)
+    makedirs_if_not_exists(dest_dir)
 
 
 def print_success(message):
@@ -173,23 +176,35 @@ def batch_rename_files(rootdir, prefix, recursive=False, pattern=None, verbose=F
         idx += 1
 
 
-def batch_create_files(rootdir, count, prefix, mkdir=False, ext=None):
-    if not os.path.exists(rootdir):
-        os.makedirs(rootdir)
+def batch_create_files(rootdir, count, prefix, ext=None):
+    makedirs_if_not_exists(rootdir)
     for i in range(count):
         filename = f'{prefix}_{i}'
         if ext:
             filename += ext
         pathname = os.path.join(rootdir, filename)
-        if mkdir:
-            os.mkdir(pathname)
-        else:
-            open(pathname, 'w+').close()
+        open(pathname, 'w+').close()
+
+
+def batch_mkdir(rootdir, count, prefix, level=1):
+    makedirs_if_not_exists(rootdir)
+    dirs = [rootdir]
+    for cur_level in range(level):
+        new_dirs = []
+        for dirname in dirs:
+            for idx in range(count):
+                cur_prefix = prefix if cur_level == 0 else os.path.basename(dirname)
+                dirpath = os.path.join(dirname, f'{cur_prefix}_{idx}')
+                os.mkdir(dirpath)
+                new_dirs.append(dirpath)
+        dirs = new_dirs
 
 
 def batch_remove_files(rootdir, recursive=False, pattern=None, verbose=False):
     batch_remove_files_internal(rootdir, recursive=recursive, pattern=pattern, verbose=verbose)
     if recursive and len(os.listdir(rootdir)) == 0:
+        if verbose:
+            print(f'Remove rootdir: {rootdir}')
         os.rmdir(rootdir)
 
 
@@ -197,20 +212,42 @@ def batch_remove_files_internal(rootdir, recursive=False, pattern=None, verbose=
     check_dir(rootdir)
     for filename in os.listdir(rootdir):
         pathname = os.path.join(rootdir, filename)
+        match_pattern = pattern and re.search(pattern, pathname)
         if os.path.isdir(pathname):
             if not recursive:
                 continue
-            if pattern and re.search(pattern, pathname):
+            if not pattern or match_pattern:
                 if verbose:
                     print(f'Remove dir: {pathname}')
                 shutil.rmtree(pathname)
             else:
                 batch_remove_files_internal(pathname, recursive=recursive, pattern=pattern, verbose=verbose)
         else:
-            if pattern and re.search(pattern, pathname):
+            if not pattern or match_pattern:
                 if verbose:
                     print(f'Remove file: {pathname}')
                 os.remove(pathname)
+
+
+def batch_write_files(rootdir, content,
+                      append=False, recursive=False,
+                      pattern=None, verbose=False):
+    check_dir(rootdir)
+    mode = 'a' if append else 'w'
+    for filename in os.listdir(rootdir):
+        pathname = os.path.join(rootdir, filename)
+        if os.path.isdir(pathname):
+            if recursive:
+                batch_write_files(pathname, content,
+                                  append=append, recursive=recursive,
+                                  pattern=pattern, verbose=verbose)
+        else:
+            if pattern and not re.search(pattern, filename):
+                continue
+            if verbose:
+                print(f'Write file: {pathname}')
+            with open(pathname, mode) as file:
+                file.write(content)
 
 
 def batch_copy_files(src_dir, dest_dir, pattern=None, verbose=False):
@@ -580,12 +617,29 @@ def main():
     create_group.add_argument('-m', '--mkdir', action='store_true', help='Create directory (default creates file)')
     create_group.add_argument('-e', '--ext', type=str, help='File extension')
 
+    # mkdir options
+    mkdir_parser = subparsers.add_parser('mkdir', help='Batch create directory')
+    mkdir_parser.add_argument('-r', '--rootdir', type=str, required=True, help='Root directory')
+    mkdir_parser.add_argument('-c', '--count', type=int, required=True, help='Number of dirs')
+    mkdir_parser.add_argument('-l', '--level', type=int, default=1, help='Directory Level')
+    mkdir_parser.add_argument('-p', '--prefix', type=str, required=True, help='File name prefix')
+
     # remove options
     remove_parser = subparsers.add_parser('remove', help='Batch remove file')
     remove_parser.add_argument('-r', '--rootdir', type=str, required=True, help='Root directory')
     remove_parser.add_argument('-R', '--recursive', action='store_true', help='Recursive traversal')
     remove_parser.add_argument('-p', '--pattern', type=str, help='Pattern')
     remove_parser.add_argument('-v', '--verbose', action='store_true', help='Verbose mode')
+
+    # write options
+    write_parser = subparsers.add_parser('write', help='Batch write file')
+    write_parser.add_argument('-r', '--rootdir', type=str, required=True, help='Root directory')
+    write_parser.add_argument('-c', '--content', type=str, required=True, help='File content')
+    write_parser.add_argument('-a', '--append', action='store_true',
+                              help="Append mode (By default, overwrite mode is used.)")
+    write_parser.add_argument('-R', '--recursive', action='store_true', help='Recursive traversal')
+    write_parser.add_argument('-p', '--pattern', type=str, help='Pattern')
+    write_parser.add_argument('-v', '--verbose', action='store_true', help='Verbose mode')
 
     # copy options
     copy_parser = subparsers.add_parser('copy', help='Batch copy file')
@@ -692,13 +746,21 @@ def main():
                            verbose=args.verbose)
     elif args.subcommand == 'create':
         batch_create_files(args.rootdir, args.count, args.prefix,
-                           mkdir=args.mkdir,
                            ext=args.ext)
+    elif args.subcommand == 'mkdir':
+        batch_mkdir(args.rootdir, args.count, args.prefix, level=args.level)
     elif args.subcommand == 'remove':
         batch_remove_files(args.rootdir,
                            recursive=args.recursive,
                            pattern=args.pattern,
                            verbose=args.verbose)
+    elif args.subcommand == 'write':
+        batch_write_files(args.rootdir,
+                          content=args.content,
+                          append=args.append,
+                          recursive=args.recursive,
+                          pattern=args.pattern,
+                          verbose=args.verbose)
     elif args.subcommand == 'copy':
         batch_copy_files(args.src, args.dest,
                          pattern=args.pattern,
