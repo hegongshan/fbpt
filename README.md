@@ -9,7 +9,7 @@ usage: fbpt [-h] {classify,rename,create,remove,copy,move,split,merge,chmod,find
 File batch processing tool (fbpt)
 
 positional arguments:
-  {classify,rename,create,remove,write,copy,move,split,merge,chmod,find,check}
+  {classify,rename,create,remove,write,copy,move,split,merge,chmod,find,check,deduplicate,compress,encrypt,decrypt,convert}
                         subcommand
     classify            Batch classify file
     rename              Batch rename file
