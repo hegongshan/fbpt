@@ -30,11 +30,12 @@ FILE_CATEGORIES = {
     'IMAGE_EXTENSIONS': ['.jpg', '.jpeg', '.png', '.heic', '.gif'],
     'VIDEO_EXTENSIONS': ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.m4v', '.mpg', '.mpeg'],
     'AUDIO_EXTENSIONS': ['.mp3', '.wav', '.m4a'],
-    'TEXT_EXTENSIONS': ['.txt', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf', '.rtf', '.odt', '.md'],
+    'TEXT_EXTENSIONS': ['.txt', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf',
+                        '.rtf', '.odt', '.md'],
     'ARCHIVE_EXTENSIONS': ['.rar', '.7z', '.zip', '.gz', '.xz', '.tar'],
     'CODE_EXTENSIONS': ['.c', '.cpp', '.cc', '.cxx', '.cp', '.c++', '.h', '.hpp', '.hxx', '.java', '.kt',
-                        '.scala', '.sc', '.py', '.rs', '.rb', '.php', '.html', '.htm', '.css', '.js', '.ts', '.sh',
-                        '.bat'],
+                        '.scala', '.sc', '.py', '.rs', '.rb', '.php', '.html', '.htm', '.css', '.js',
+                        '.ts', '.sh', '.bat'],
     'DATA_EXTENSIONS': ['.json', '.csv', '.dat'],
     'CONFIG_EXTENSIONS': ['.yml', '.yaml', '.xml', '.ini']
 }
@@ -497,6 +498,42 @@ def decrypt_file(input_path, output_path, password):
         f.write(decrypted)
 
 
+def batch_encrypt_files(rootdir, password, pattern=None, verbose=False):
+    check_dir(rootdir)
+    for root, _, files in os.walk(rootdir):
+        for filename in files:
+            if pattern and not fnmatch.fnmatch(filename, pattern):
+                continue
+            input_path = os.path.join(root, filename)
+            if filename.endswith(".enc"):
+                continue
+            output_path = f"{input_path}.enc"
+            try:
+                encrypt_file(input_path, output_path, password)
+                if verbose:
+                    print(f"Encrypted {input_path} -> {output_path}")
+            except Exception as e:
+                print_error(f"Encryption failed for {input_path}: {str(e)}")
+
+
+def batch_decrypt_files(rootdir, password, pattern=None, verbose=False):
+    check_dir(rootdir)
+    for root, _, files in os.walk(rootdir):
+        for filename in files:
+            if pattern and not fnmatch.fnmatch(filename, pattern):
+                continue
+            if not filename.endswith(".enc"):
+                continue
+            input_path = os.path.join(root, filename)
+            output_path = input_path[:-4]
+            try:
+                decrypt_file(input_path, output_path, password)
+                if verbose:
+                    print(f"Decrypted {input_path} -> {output_path}")
+            except Exception as e:
+                print_error(f"Decryption failed for {input_path}: {str(e)}")
+
+
 def convert_image_format(source_file, target_file, target_format='PNG'):
     try:
         with Image.open(source_file) as img:
@@ -587,211 +624,527 @@ def batch_convert_files(source_dir, target_dir, conversion_type, format='PNG', r
 #                              Main                              #
 ##################################################################
 def main():
-    parser = argparse.ArgumentParser(description='File batch processing tool (fbpt)')
-    subparsers = parser.add_subparsers(dest='subcommand', help='subcommand')
+    parser = argparse.ArgumentParser(
+        description="File batch processing tool (fbpt)"
+    )
+    subparsers = parser.add_subparsers(
+        dest="subcommand", help="subcommand"
+    )
 
     # classify options
-    classify_parser = subparsers.add_parser('classify', help='Classify files into directory structure')
-    classify_parser.add_argument('-r', '--rootdir', required=True, help='Root directory to process')
-    classify_parser.add_argument('--rules', required=True, nargs='+',
-                                 help='Classification rules (format: type[:param]) \n'
-                                      'Available types: \n'
-                                      '  time:strftime_format (e.g. time:%%Y/%%m) \n'
-                                      '  size \n'
-                                      '  file_type')
+    classify_parser = subparsers.add_parser(
+        "classify", help="Classify files into directory structure"
+    )
+    classify_parser.add_argument(
+        "-r", "--rootdir", required=True,
+        help="Root directory to process"
+    )
+    classify_parser.add_argument(
+        "--rules", required=True, nargs="+",
+        help=(
+            "Classification rules (format: type[:param]) \n"
+            "Available types: \n"
+            "  time:strftime_format (e.g. time:%%Y/%%m) \n"
+            "  size \n"
+            "  file_type"
+        )
+    )
 
     # rename options
-    rename_parser = subparsers.add_parser('rename', help='Batch rename file')
-    rename_parser.add_argument('-r', '--rootdir', type=str, required=True, help='Root directory')
-    rename_parser.add_argument('-p', '--prefix', type=str, required=True, help='File name prefix')
-    rename_parser.add_argument('-P', '--pattern', type=str, help='Pattern')
-    rename_parser.add_argument('-R', '--recursive', action='store_true', help='Recursive traversal')
-    rename_parser.add_argument('-v', '--verbose', action='store_true', help='Verbose mode')
+    rename_parser = subparsers.add_parser(
+        "rename", help="Batch rename file"
+    )
+    rename_parser.add_argument(
+        "-r", "--rootdir", type=str, required=True,
+        help="Root directory"
+    )
+    rename_parser.add_argument(
+        "-p", "--prefix", type=str, required=True,
+        help="File name prefix"
+    )
+    rename_parser.add_argument(
+        "-P", "--pattern", type=str, help="Pattern"
+    )
+    rename_parser.add_argument(
+        "-R", "--recursive", action="store_true",
+        help="Recursive traversal"
+    )
+    rename_parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Verbose mode"
+    )
 
     # create options
-    create_parser = subparsers.add_parser('create', help='Batch create file')
-    create_parser.add_argument('-r', '--rootdir', type=str, required=True, help='Root directory')
-    create_parser.add_argument('-c', '--count', type=int, required=True, help='Number of files/dirs')
-    create_parser.add_argument('-p', '--prefix', type=str, required=True, help='File name prefix')
+    create_parser = subparsers.add_parser(
+        "create", help="Batch create file"
+    )
+    create_parser.add_argument(
+        "-r", "--rootdir", type=str, required=True,
+        help="Root directory"
+    )
+    create_parser.add_argument(
+        "-c", "--count", type=int, required=True,
+        help="Number of files/dirs"
+    )
+    create_parser.add_argument(
+        "-p", "--prefix", type=str, required=True,
+        help="File name prefix"
+    )
     create_group = create_parser.add_mutually_exclusive_group()
-    create_group.add_argument('-m', '--mkdir', action='store_true', help='Create directory (default creates file)')
-    create_group.add_argument('-e', '--ext', type=str, help='File extension')
+    create_group.add_argument(
+        "-m", "--mkdir", action="store_true",
+        help="Create directory (default creates file)"
+    )
+    create_group.add_argument(
+        "-e", "--ext", type=str,
+        help="File extension"
+    )
 
     # mkdir options
-    mkdir_parser = subparsers.add_parser('mkdir', help='Batch create directory')
-    mkdir_parser.add_argument('-r', '--rootdir', type=str, required=True, help='Root directory')
-    mkdir_parser.add_argument('-c', '--count', type=int, required=True, help='Number of dirs')
-    mkdir_parser.add_argument('-l', '--level', type=int, default=1, help='Directory Level')
-    mkdir_parser.add_argument('-p', '--prefix', type=str, required=True, help='File name prefix')
+    mkdir_parser = subparsers.add_parser(
+        "mkdir", help="Batch create directory"
+    )
+    mkdir_parser.add_argument(
+        "-r", "--rootdir", type=str, required=True,
+        help="Root directory"
+    )
+    mkdir_parser.add_argument(
+        "-c", "--count", type=int, required=True,
+        help="Number of dirs"
+    )
+    mkdir_parser.add_argument(
+        "-l", "--level", type=int, default=1,
+        help="Directory Level"
+    )
+    mkdir_parser.add_argument(
+        "-p", "--prefix", type=str, required=True,
+        help="File name prefix"
+    )
 
     # remove options
-    remove_parser = subparsers.add_parser('remove', help='Batch remove file')
-    remove_parser.add_argument('-r', '--rootdir', type=str, required=True, help='Root directory')
-    remove_parser.add_argument('-R', '--recursive', action='store_true', help='Recursive traversal')
-    remove_parser.add_argument('-p', '--pattern', type=str, help='Pattern')
-    remove_parser.add_argument('-v', '--verbose', action='store_true', help='Verbose mode')
+    remove_parser = subparsers.add_parser(
+        "remove", help="Batch remove file"
+    )
+    remove_parser.add_argument(
+        "-r", "--rootdir", type=str, required=True,
+        help="Root directory"
+    )
+    remove_parser.add_argument(
+        "-R", "--recursive", action="store_true",
+        help="Recursive traversal"
+    )
+    remove_parser.add_argument(
+        "-p", "--pattern", type=str,
+        help="Pattern"
+    )
+    remove_parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Verbose mode"
+    )
 
     # write options
-    write_parser = subparsers.add_parser('write', help='Batch write file')
-    write_parser.add_argument('-r', '--rootdir', type=str, required=True, help='Root directory')
-    write_parser.add_argument('-c', '--content', type=str, required=True, help='File content')
-    write_parser.add_argument('-a', '--append', action='store_true',
-                              help="Append mode (By default, overwrite mode is used.)")
-    write_parser.add_argument('-R', '--recursive', action='store_true', help='Recursive traversal')
-    write_parser.add_argument('-p', '--pattern', type=str, help='Pattern')
-    write_parser.add_argument('-v', '--verbose', action='store_true', help='Verbose mode')
+    write_parser = subparsers.add_parser(
+        "write", help="Batch write file"
+    )
+    write_parser.add_argument(
+        "-r", "--rootdir", type=str, required=True,
+        help="Root directory"
+    )
+    write_parser.add_argument(
+        "-c", "--content", type=str, required=True,
+        help="File content"
+    )
+    write_parser.add_argument(
+        "-a", "--append", action="store_true",
+        help="Append mode (By default, overwrite mode is used.)"
+    )
+    write_parser.add_argument(
+        "-R", "--recursive", action="store_true",
+        help="Recursive traversal"
+    )
+    write_parser.add_argument(
+        "-p", "--pattern", type=str,
+        help="Pattern"
+    )
+    write_parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Verbose mode"
+    )
 
     # copy options
-    copy_parser = subparsers.add_parser('copy', help='Batch copy file')
-    copy_parser.add_argument('-s', '--src', type=str, required=True, help='Source directory')
-    copy_parser.add_argument('-d', '--dest', type=str, required=True, help='Destination directory')
-    copy_parser.add_argument('-p', '--pattern', type=str, help='Pattern')
-    copy_parser.add_argument('-v', '--verbose', action='store_true', help='Verbose mode')
+    copy_parser = subparsers.add_parser(
+        "copy", help="Batch copy file"
+    )
+    copy_parser.add_argument(
+        "-s", "--src", type=str, required=True,
+        help="Source directory"
+    )
+    copy_parser.add_argument(
+        "-d", "--dest", type=str, required=True,
+        help="Destination directory"
+    )
+    copy_parser.add_argument(
+        "-p", "--pattern", type=str,
+        help="Pattern"
+    )
+    copy_parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Verbose mode"
+    )
 
     # move options
-    move_parser = subparsers.add_parser('move', help='Batch move file')
-    move_parser.add_argument('-s', '--src', type=str, required=True, help='Source directory')
-    move_parser.add_argument('-d', '--dest', type=str, required=True, help='Destination directory')
-    move_parser.add_argument('-p', '--pattern', type=str, help='Pattern')
-    move_parser.add_argument('-v', '--verbose', action='store_true', help='Verbose mode')
+    move_parser = subparsers.add_parser(
+        "move", help="Batch move file"
+    )
+    move_parser.add_argument(
+        "-s", "--src", type=str, required=True,
+        help="Source directory"
+    )
+    move_parser.add_argument(
+        "-d", "--dest", type=str, required=True,
+        help="Destination directory"
+    )
+    move_parser.add_argument(
+        "-p", "--pattern", type=str,
+        help="Pattern"
+    )
+    move_parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Verbose mode"
+    )
 
     # split options
-    split_parser = subparsers.add_parser('split', help='Batch split file')
-    split_parser.add_argument('-s', '--src', type=str, required=True, help='Source directory')
-    split_parser.add_argument('-d', '--dest', type=str, required=True, help='Destination directory')
+    split_parser = subparsers.add_parser(
+        "split", help="Batch split file"
+    )
+    split_parser.add_argument(
+        "-s", "--src", type=str, required=True,
+        help="Source directory"
+    )
+    split_parser.add_argument(
+        "-d", "--dest", type=str, required=True,
+        help="Destination directory"
+    )
     split_group = split_parser.add_mutually_exclusive_group(required=True)
-    split_group.add_argument('-l', '--line', type=int, help='Line count')
-    split_group.add_argument('-c', '--chunksize', type=int, help='Chunk Size (in byte)')
-    split_parser.add_argument('-v', '--verbose', action='store_true', help='Verbose mode')
+    split_group.add_argument(
+        "-l", "--line", type=int,
+        help="Line count"
+    )
+    split_group.add_argument(
+        "-c", "--chunksize", type=int,
+        help="Chunk Size (in byte)"
+    )
+    split_parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Verbose mode"
+    )
 
     # merge options
-    merge_parser = subparsers.add_parser('merge', help='Batch merge file')
-    merge_parser.add_argument('-s', '--src', type=str, required=True, help='Source directory')
-    merge_parser.add_argument('-o', '--output', type=str, required=True, help='Output file')
-    merge_parser.add_argument('-p', '--pattern', type=str, help='Pattern')
-    merge_parser.add_argument('-v', '--verbose', action='store_true', help='Verbose mode')
+    merge_parser = subparsers.add_parser(
+        "merge", help="Batch merge file"
+    )
+    merge_parser.add_argument(
+        "-s", "--src", type=str, required=True,
+        help="Source directory"
+    )
+    merge_parser.add_argument(
+        "-o", "--output", type=str, required=True,
+        help="Output file"
+    )
+    merge_parser.add_argument(
+        "-p", "--pattern", type=str,
+        help="Pattern"
+    )
+    merge_parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Verbose mode"
+    )
 
     # chmod options
-    chmod_parser = subparsers.add_parser('chmod', help='Batch chmod')
-    chmod_parser.add_argument('-r', '--rootdir', type=str, required=True, help='Root directory')
-    chmod_parser.add_argument('-m', '--mode', type=str, required=True, help='Mode')
-    chmod_parser.add_argument('-R', '--recursive', action='store_true', help='Recursive traversal')
-    chmod_parser.add_argument('-p', '--pattern', type=str, help='Pattern')
-    chmod_parser.add_argument('-v', '--verbose', action='store_true', help='Verbose mode')
+    chmod_parser = subparsers.add_parser(
+        "chmod", help="Batch chmod"
+    )
+    chmod_parser.add_argument(
+        "-r", "--rootdir", type=str, required=True,
+        help="Root directory"
+    )
+    chmod_parser.add_argument(
+        "-m", "--mode", type=str, required=True,
+        help="Mode"
+    )
+    chmod_parser.add_argument(
+        "-R", "--recursive", action="store_true",
+        help="Recursive traversal"
+    )
+    chmod_parser.add_argument(
+        "-p", "--pattern", type=str,
+        help="Pattern"
+    )
+    chmod_parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Verbose mode"
+    )
 
     # find options
-    find_parser = subparsers.add_parser('find', help='Batch find')
-    find_parser.add_argument('-r', '--rootdir', type=str, required=True, help='Root directory')
-    find_parser.add_argument('-p', '--pattern', type=str, required=True, help='Pattern')
+    find_parser = subparsers.add_parser(
+        "find", help="Batch find"
+    )
+    find_parser.add_argument(
+        "-r", "--rootdir", type=str, required=True,
+        help="Root directory"
+    )
+    find_parser.add_argument(
+        "-p", "--pattern", type=str, required=True,
+        help="Pattern"
+    )
 
     # check options
-    check_parser = subparsers.add_parser('check', help='Batch check')
-    check_parser.add_argument('-r', '--rootdir', type=str, required=True, help='Root directory')
-    check_parser.add_argument('-p', '--pattern', type=str, required=True, help='Pattern')
+    check_parser = subparsers.add_parser(
+        "check", help="Batch check"
+    )
+    check_parser.add_argument(
+        "-r", "--rootdir", type=str, required=True,
+        help="Root directory"
+    )
+    check_parser.add_argument(
+        "-p", "--pattern", type=str, required=True,
+        help="Pattern"
+    )
 
     # deduplicate options
-    deduplicate_parser = subparsers.add_parser('deduplicate', help='Batch deduplicate')
-    deduplicate_parser.add_argument('-r', '--rootdir', type=str, required=True, help='Root directory')
-    deduplicate_parser.add_argument('-a', '--action', type=str, default='delete', help='Action: delete or move')
-    deduplicate_parser.add_argument('-d', '--dry_run', action='store_true', help='Dry-run mode')
+    deduplicate_parser = subparsers.add_parser(
+        "deduplicate", help="Batch deduplicate"
+    )
+    deduplicate_parser.add_argument(
+        "-r", "--rootdir", type=str, required=True,
+        help="Root directory"
+    )
+    deduplicate_parser.add_argument(
+        "-a", "--action", type=str, default="delete",
+        help="Action: delete or move"
+    )
+    deduplicate_parser.add_argument(
+        "-d", "--dry_run", action="store_true",
+        help="Dry-run mode"
+    )
 
     # compress options
-    compress_parser = subparsers.add_parser('compress', help='Compress files based on entropy analysis')
-    compress_parser.add_argument('-r', '--rootdir', required=True, help='Root directory to process')
-    compress_parser.add_argument('-t', '--threshold', type=float, default=7.0,
-                                 help='Entropy threshold for compression (0-8, default: 7)')
-    compress_parser.add_argument('--remove', action='store_true',
-                                 help='Remove original files after compression')
-    compress_parser.add_argument('-v', '--verbose', action='store_true',
-                                 help='Show detailed processing information')
+    compress_parser = subparsers.add_parser(
+        "compress",
+        help="Compress files based on entropy analysis"
+    )
+    compress_parser.add_argument(
+        "-r", "--rootdir", required=True,
+        help="Root directory to process"
+    )
+    compress_parser.add_argument(
+        "-t", "--threshold", type=float, default=7.0,
+        help="Entropy threshold for compression (0-8, default: 7)"
+    )
+    compress_parser.add_argument(
+        "--remove", action="store_true",
+        help="Remove original files after compression"
+    )
+    compress_parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Show detailed processing information"
+    )
+
+    # encrypt options
+    encrypt_parser = subparsers.add_parser(
+        "encrypt", help="Batch encrypt files"
+    )
+    encrypt_parser.add_argument(
+        "-r", "--rootdir", type=str, required=True,
+        help="Root directory containing files to encrypt"
+    )
+    encrypt_parser.add_argument(
+        "-p", "--password", type=str, required=True,
+        help="Encryption password"
+    )
+    encrypt_parser.add_argument(
+        "-m", "--pattern", type=str,
+        help="File matching pattern (e.g., '*.txt')"
+    )
+    encrypt_parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Verbose mode"
+    )
+
+    # decrypt options
+    decrypt_parser = subparsers.add_parser(
+        "decrypt", help="Batch decrypt files"
+    )
+    decrypt_parser.add_argument(
+        "-r", "--rootdir", type=str, required=True,
+        help="Root directory containing files to decrypt"
+    )
+    decrypt_parser.add_argument(
+        "-p", "--password", type=str, required=True,
+        help="Decryption password"
+    )
+    decrypt_parser.add_argument(
+        "-m", "--pattern", type=str,
+        help="File matching pattern (e.g., '*.enc')"
+    )
+    decrypt_parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Verbose mode"
+    )
 
     # convert options
-    convert_parser = subparsers.add_parser('convert', help='Batch convert files')
-    convert_parser.add_argument('-s', '--src', type=str, required=True, help='Source directory to convert')
-    convert_parser.add_argument('-d', '--dest', type=str, required=True,
-                                help='Destination directory for converted files')
-    convert_parser.add_argument('-t', '--type', type=str, required=True, choices=list(CONVERSION_MAP.keys()),
-                                help='Conversion type: ' + ', '.join(list(CONVERSION_MAP.keys())))
-    convert_parser.add_argument('--format', default='PNG',
-                                help='For image conversion, specify target format (e.g., PNG, JPEG, BMP)')
-    convert_parser.add_argument('-r', '--recursive', action='store_true',
-                                help='Recursively convert files in subdirectories')
+    convert_parser = subparsers.add_parser(
+        "convert", help="Batch convert files"
+    )
+    convert_parser.add_argument(
+        "-s", "--src", type=str, required=True,
+        help="Source directory to convert"
+    )
+    convert_parser.add_argument(
+        "-d", "--dest", type=str, required=True,
+        help="Destination directory for converted files"
+    )
+    convert_parser.add_argument(
+        "-t", "--type", type=str, required=True,
+        choices=list(CONVERSION_MAP.keys()),
+        help="Conversion type: " + ", ".join(list(CONVERSION_MAP.keys()))
+    )
+    convert_parser.add_argument(
+        "--format", default="PNG",
+        help="For image conversion, specify target format (e.g., PNG, JPEG, BMP)"
+    )
+    convert_parser.add_argument(
+        "-r", "--recursive", action="store_true",
+        help="Recursively convert files in subdirectories"
+    )
 
     args = parser.parse_args()
 
     if not args.subcommand:
-        print_error('Error: A subcommand is required.')
+        print_error("Error: A subcommand is required.")
         parser.print_help()
         exit(1)
 
-    if args.subcommand == 'classify':
+    if args.subcommand == "classify":
         rules = []
         for rule in args.rules:
-            if rule.startswith('time:'):
-                _, fmt = rule.split(':', 1)
-                rules.append({'type': 'time', 'format': fmt})
-            elif rule == 'size':
-                rules.append({'type': 'size'})
-            elif rule == 'file_type':
-                rules.append({'type': 'file_type'})
+            if rule.startswith("time:"):
+                _, fmt = rule.split(":", 1)
+                rules.append({"type": "time", "format": fmt})
+            elif rule == "size":
+                rules.append({"type": "size"})
+            elif rule == "file_type":
+                rules.append({"type": "file_type"})
             else:
                 print_error(f"Invalid rule: {rule}")
                 exit(1)
         batch_classify_files(args.rootdir, rules)
         print_success("Classification completed successfully")
-    elif args.subcommand == 'rename':
-        batch_rename_files(args.rootdir, args.prefix,
-                           recursive=args.recursive,
-                           pattern=args.pattern,
-                           verbose=args.verbose)
-    elif args.subcommand == 'create':
-        batch_create_files(args.rootdir, args.count, args.prefix,
-                           ext=args.ext)
-    elif args.subcommand == 'mkdir':
-        batch_mkdir(args.rootdir, args.count, args.prefix, level=args.level)
-    elif args.subcommand == 'remove':
-        batch_remove_files(args.rootdir,
-                           recursive=args.recursive,
-                           pattern=args.pattern,
-                           verbose=args.verbose)
-    elif args.subcommand == 'write':
-        batch_write_files(args.rootdir,
-                          content=args.content,
-                          append=args.append,
-                          recursive=args.recursive,
-                          pattern=args.pattern,
-                          verbose=args.verbose)
-    elif args.subcommand == 'copy':
-        batch_copy_files(args.src, args.dest,
-                         pattern=args.pattern,
-                         verbose=args.verbose)
-    elif args.subcommand == 'move':
-        batch_move_files(args.src, args.dest,
-                         pattern=args.pattern,
-                         verbose=args.verbose)
-    elif args.subcommand == 'split':
+
+
+    elif args.subcommand == "rename":
+        batch_rename_files(
+            args.rootdir, args.prefix, recursive=args.recursive,
+            pattern=args.pattern, verbose=args.verbose
+        )
+
+        print_success("Rename completed successfully")
+
+
+    elif args.subcommand == "create":
+        batch_create_files(
+            args.rootdir, args.count, args.prefix, ext=args.ext
+        )
+        print_success("Creation completed successfully")
+
+
+    elif args.subcommand == "mkdir":
+        batch_mkdir(
+            args.rootdir, args.count, args.prefix, level=args.level
+        )
+        print_success("Directories created successfully")
+
+
+    elif args.subcommand == "remove":
+        batch_remove_files(
+            args.rootdir, recursive=args.recursive,
+            pattern=args.pattern, verbose=args.verbose
+        )
+        print_success("Removal completed successfully")
+
+
+    elif args.subcommand == "write":
+        batch_write_files(
+            args.rootdir, content=args.content, append=args.append,
+            recursive=args.recursive, pattern=args.pattern,
+            verbose=args.verbose
+        )
+        print_success("Write completed successfully")
+
+
+    elif args.subcommand == "copy":
+        batch_copy_files(
+            args.src, args.dest, pattern=args.pattern,
+            verbose=args.verbose
+        )
+        print_success("Copy completed successfully")
+
+
+    elif args.subcommand == "move":
+        batch_move_files(
+            args.src, args.dest, pattern=args.pattern,
+            verbose=args.verbose
+        )
+        print_success("Move completed successfully")
+
+
+    elif args.subcommand == "split":
         if args.line:
-            batch_split_files_by_line(args.src, args.dest,
-                                      args.line, verbose=args.verbose)
+            batch_split_files_by_line(
+                args.src, args.dest, args.line,
+                verbose=args.verbose
+            )
         else:
-            batch_split_files_by_byte(args.src, args.dest,
-                                      args.chunksize, verbose=args.verbose)
-    elif args.subcommand == 'merge':
-        batch_merge_files(args.src, args.output,
-                          pattern=args.pattern,
-                          verbose=args.verbose)
-    elif args.subcommand == 'chmod':
-        batch_chmod(args.rootdir, args.mode,
-                    recursive=args.recursive,
-                    pattern=args.pattern,
-                    verbose=args.verbose)
-    elif args.subcommand == 'find':
+            batch_split_files_by_byte(
+                args.src, args.dest, args.chunksize,
+                verbose=args.verbose
+            )
+        print_success("Split completed successfully")
+
+
+    elif args.subcommand == "merge":
+        batch_merge_files(
+            args.src, args.output, pattern=args.pattern,
+            verbose=args.verbose
+        )
+        print_success("Merge completed successfully")
+
+
+    elif args.subcommand == "chmod":
+        batch_chmod(
+            args.rootdir, args.mode, recursive=args.recursive,
+            pattern=args.pattern, verbose=args.verbose
+        )
+        print_success("Chmod completed successfully")
+
+
+    elif args.subcommand == "find":
         batch_find_files(args.rootdir, args.pattern)
-    elif args.subcommand == 'check':
+        print_success("Find completed successfully")
+
+    elif args.subcommand == "check":
         batch_check_files(args.rootdir, args.pattern)
-    elif args.subcommand == 'deduplicate':
-        batch_deduplicate(args.rootdir, action=args.action, dry_run=args.dry_run)
-    elif args.subcommand == 'compress':
+        print_success("Check completed successfully")
+
+
+    elif args.subcommand == "deduplicate":
+        batch_deduplicate(
+            args.rootdir, action=args.action, dry_run=args.dry_run
+        )
+        print_success("Deduplication completed successfully")
+
+
+    elif args.subcommand == "compress":
         batch_compress_files(
             args.rootdir,
             threshold=args.threshold,
@@ -799,17 +1152,38 @@ def main():
             verbose=args.verbose
         )
         print_success("Compression completed successfully")
-    elif args.subcommand == 'convert':
-        batch_convert_files(
-            args.src,
-            args.dest,
-            conversion_type=args.type,
-            format=args.format.upper(),
-            recursive=args.recursive
+
+
+    elif args.subcommand == "encrypt":
+        batch_encrypt_files(
+            args.rootdir,
+            args.password,
+            pattern=args.pattern,
+            verbose=args.verbose
         )
+        print_success("Encryption completed successfully")
+
+
+    elif args.subcommand == "decrypt":
+        batch_decrypt_files(
+            args.rootdir,
+            args.password,
+            pattern=args.pattern,
+            verbose=args.verbose
+        )
+        print_success("Decryption completed successfully")
+
+
+    elif args.subcommand == "convert":
+        batch_convert_files(
+            args.src, args.dest, conversion_type=args.type,
+            format=args.format.upper(), recursive=args.recursive
+        )
+        print_success("Conversion completed successfully")
+
     else:
-        print_error('Error: Invalid subcommand.')
+        print_error("Error: Invalid subcommand.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
