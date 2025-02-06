@@ -1,0 +1,6 @@
+markdown
+pandas
+Pillow
+cryptography
+pdf2docx
+pywin32
