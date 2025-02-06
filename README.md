@@ -4,7 +4,7 @@ usage:
 
 ```shell
 $ ./fbpt -h
-usage: fbpt [-h] {classify,rename,create,remove,copy,move,split,merge,chmod,find,check} ...
+usage: fbpt [-h] {classify,rename,create,remove,copy,move,split,merge,chmod,find,check,deduplicate,compress,encrypt,decrypt,convert} ...
 
 File batch processing tool (fbpt)
 
@@ -22,7 +22,11 @@ positional arguments:
     chmod               Batch chmod
     find                Batch find
     check               Batch check
-
+    deduplicate         Batch deduplicate
+    compress            Batch compress file
+    encrypt             Batch encrypt file
+    decrypt             Batch decrypt file
+    convert             Batch convert file type
 options:
   -h, --help            show this help message and exit
 ```

@@ -17,7 +17,7 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from pdf2docx import Converter
-from win32com import client as wc
+
 
 ##################################################################
 #                            Constant                            #
@@ -480,6 +480,11 @@ def pdf_to_docx(source_file, target_file):
 
 
 def word_to_pdf(source_file, target_file):
+    try:
+        from win32com import client as wc
+    except ImportError:
+        print("Error: win32com模块未安装，请安装pywin32")
+        return
     try:
         word = wc.Dispatch('Word.Application')
         doc = word.Documents.Open(os.path.abspath(source_file))
