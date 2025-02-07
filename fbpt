@@ -2,6 +2,7 @@
 import argparse
 import base64
 import hashlib
+import json
 import math
 import os
 import re
@@ -375,10 +376,10 @@ def batch_check_files(rootdir, pattern):
         print_success('PASS')
 
 
-def file_hash_func(filepath, block_size=65536):
-    hasher = hashlib.sha256()
+def get_file_hash(filepath, chunk_size=65536):
+    hasher = hashlib.md5()
     with open(filepath, 'rb') as f:
-        while chunk := f.read(block_size):
+        while chunk := f.read(chunk_size):
             hasher.update(chunk)
     return hasher.hexdigest()
 
@@ -391,11 +392,11 @@ def batch_deduplicate(rootdir, action='delete', dry_run=False):
         for filename in files:
             filepath = os.path.join(root, filename)
             if os.path.isfile(filepath):
-                hash_val = file_hash_func(filepath)
+                hash_val = get_file_hash(filepath)
                 hashes[hash_val].append(filepath)
     for hash_value, files in hashes.items():
         if len(files) > 1:
-            print_warning(f"发现重复文件 (SHA256: {hash_value[:8]}...)")
+            print_warning(f"发现重复文件 (MD5: {hash_value[:8]}...)")
             keep_file = files[0]
             duplicates = files[1:]
             for dup in duplicates:
@@ -412,6 +413,40 @@ def batch_deduplicate(rootdir, action='delete', dry_run=False):
                     shutil.move(dup, os.path.join(dup_dir, os.path.basename(dup)))
                 print(f"已处理: {dup}")
     print_success(f"去重完成，共释放空间: {total_saved / 1024 / 1024:.2f} MB")
+
+
+def batch_md5(rootdir, output_file, output_type='csv',
+              chunk_size=1024 * 1024, recursive=False,
+              pattern=None, verbose=False):
+    check_dir(rootdir)
+
+    file_md5_values = {}
+    batch_md5_internal(rootdir, file_md5_values, chunk_size=chunk_size,
+                       recursive=recursive, pattern=pattern, verbose=verbose)
+    with open(output_file, 'w') as outfile:
+        if output_type == 'json':
+            json.dump(file_md5_values, outfile, indent=4)
+        else:
+            outfile.write('filepath, md5\n')
+            for filepath, md5_value in file_md5_values.items():
+                outfile.write(f'{filepath}, {md5_value}\n')
+
+
+def batch_md5_internal(rootdir, md5_values, chunk_size=1024 * 1024,
+                       recursive=False, pattern=None, verbose=False):
+    for filename in os.listdir(rootdir):
+        pathname = os.path.join(rootdir, filename)
+        if os.path.isdir(pathname):
+            if recursive:
+                batch_md5_internal(pathname, md5_values, chunk_size=chunk_size,
+                                   recursive=recursive, pattern=pattern, verbose=verbose)
+        else:
+            if pattern and not re.search(pattern, filename, re.IGNORECASE):
+                continue
+
+            if verbose:
+                print(f'Calculate: {pathname}')
+            md5_values[pathname] = get_file_hash(pathname, chunk_size=chunk_size)
 
 
 def calculate_entropy(file_path):
@@ -928,6 +963,39 @@ def main():
         help="Dry-run mode"
     )
 
+    # md5 options
+    md5_parser = subparsers.add_parser(
+        'md5', help='Batch md5'
+    )
+    md5_parser.add_argument(
+        '-r', '--rootdir', type=str, required=True,
+        help='Root directory'
+    )
+    md5_parser.add_argument(
+        '-o', '--output', type=str, required=True,
+        help='Output file'
+    )
+    md5_parser.add_argument(
+        '-c', '--chunk-size', type=int, default=1024 * 1024,
+        help='Chunk size'
+    )
+    md5_parser.add_argument(
+        '-R', '--recursive', action='store_true',
+        help='Recursive traversal'
+    )
+    md5_parser.add_argument(
+        '-C', '--csv', action='store_true',
+        help='Export as CSV file. (By default, export as JSON file.)'
+    )
+    md5_parser.add_argument(
+        '-p', '--pattern', type=str,
+        help='Pattern'
+    )
+    md5_parser.add_argument(
+        '-v', '--verbose', action='store_true',
+        help='Verbose mode'
+    )
+
     # compress options
     compress_parser = subparsers.add_parser(
         "compress",
@@ -1143,7 +1211,11 @@ def main():
         )
         print_success("Deduplication completed successfully")
 
-
+    elif args.subcommand == 'md5':
+        batch_md5(args.rootdir, args.output,
+                  output_type='csv' if args.csv else 'json',
+                  chunk_size=args.chunk_size, recursive=args.recursive,
+                  pattern=args.pattern, verbose=args.verbose)
     elif args.subcommand == "compress":
         batch_compress_files(
             args.rootdir,
