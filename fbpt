@@ -1,23 +1,17 @@
 #!/usr/bin/env python3
 import argparse
 import base64
+import fnmatch
 import hashlib
 import json
 import math
 import os
 import re
 import shutil
+import sys
 import zipfile
 from collections import defaultdict
 from datetime import datetime
-
-import markdown
-import pandas as pd
-from PIL import Image
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from pdf2docx import Converter
 
 ##################################################################
 #                            Constant                            #
@@ -68,6 +62,8 @@ COLOR_RED = '\033[91m'
 COLOR_GREEN = '\033[92m'
 COLOR_YELLOW = '\033[93m'
 COLOR_RESET = '\033[0m'
+
+PIP = 'pip' if sys.platform == 'win32' else 'pip3'
 
 
 ##################################################################
@@ -499,6 +495,14 @@ def batch_compress_files(rootdir, threshold=7.0, remove_original=False, verbose=
 
 
 def derive_key(password: str, salt: bytes) -> bytes:
+    try:
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    except ImportError:
+        print_error('Error: No module named cryptography. '
+                    f'Please run "{PIP} install cryptography".')
+        exit(1)
+
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
@@ -509,6 +513,13 @@ def derive_key(password: str, salt: bytes) -> bytes:
 
 
 def encrypt_file(input_path, output_path, password):
+    try:
+        from cryptography.fernet import Fernet
+    except ImportError:
+        print_error('Error: No module named cryptography. '
+                    f'Please run "{PIP} install cryptography".')
+        exit(1)
+
     salt = os.urandom(16)
     key = derive_key(password, salt)
     fernet = Fernet(key)
@@ -520,6 +531,13 @@ def encrypt_file(input_path, output_path, password):
 
 
 def decrypt_file(input_path, output_path, password):
+    try:
+        from cryptography.fernet import Fernet
+    except ImportError:
+        print_error('Error: No module named cryptography. '
+                    f'Please run "{PIP} install cryptography".')
+        exit(1)
+
     with open(input_path, 'rb') as f:
         salt = f.read(16)
         encrypted_data = f.read()
@@ -571,6 +589,13 @@ def batch_decrypt_files(rootdir, password, pattern=None, verbose=False):
 
 def convert_image_format(source_file, target_file, target_format='PNG'):
     try:
+        from PIL import Image
+    except ImportError:
+        print_error('Error: No module named PIL. '
+                    f'Please run "{PIP} install Pillow".')
+        exit(1)
+
+    try:
         with Image.open(source_file) as img:
             img.save(target_file, format=target_format)
         print(f"Converted image {source_file} to {target_format} format and saved as {target_file}.")
@@ -579,6 +604,13 @@ def convert_image_format(source_file, target_file, target_format='PNG'):
 
 
 def pdf_to_docx(source_file, target_file):
+    try:
+        from pdf2docx import Converter
+    except ImportError:
+        print_error('Error: No module named pdf2docx. '
+                    f'Please run "{PIP} install pdf2docx".')
+        exit(1)
+
     try:
         cv = Converter(source_file)
         cv.convert(target_file, start=0, end=None)
@@ -592,8 +624,10 @@ def word_to_pdf(source_file, target_file):
     try:
         from win32com import client as wc
     except ImportError:
-        print("Error: win32com模块未安装，请安装pywin32")
-        return
+        print_error('Error: No module named win32com. '
+                    f'Please run "{PIP} install pywin32".')
+        exit(1)
+
     try:
         word = wc.Dispatch('Word.Application')
         doc = word.Documents.Open(os.path.abspath(source_file))
@@ -607,6 +641,13 @@ def word_to_pdf(source_file, target_file):
 
 def excel_to_csv(source_file, target_file):
     try:
+        import pandas as pd
+    except ImportError:
+        print_error('Error: No module named pandas. '
+                    f'Please run "{PIP} install pandas".')
+        exit(1)
+
+    try:
         df = pd.read_excel(source_file)
         df.to_csv(target_file, index=False)
         print(f"Converted Excel {source_file} to CSV.")
@@ -615,6 +656,13 @@ def excel_to_csv(source_file, target_file):
 
 
 def markdown_to_html(source_file, target_file):
+    try:
+        import markdown
+    except ImportError:
+        print_error('Error: No module named markdown. '
+                    f'Please run "{PIP} install markdown".')
+        exit(1)
+
     try:
         with open(source_file, 'r', encoding='utf-8') as f:
             text = f.read()
@@ -1107,65 +1155,40 @@ def main():
                 print_error(f"Invalid rule: {rule}")
                 exit(1)
         batch_classify_files(args.rootdir, rules)
-        print_success("Classification completed successfully")
-
-
     elif args.subcommand == "rename":
         batch_rename_files(
             args.rootdir, args.prefix, recursive=args.recursive,
             pattern=args.pattern, verbose=args.verbose
         )
-
-        print_success("Rename completed successfully")
-
-
     elif args.subcommand == "create":
         batch_create_files(
             args.rootdir, args.count, args.prefix, ext=args.ext
         )
-        print_success("Creation completed successfully")
-
-
     elif args.subcommand == "mkdir":
         batch_mkdir(
             args.rootdir, args.count, args.prefix, level=args.level
         )
-        print_success("Directories created successfully")
-
-
     elif args.subcommand == "remove":
         batch_remove_files(
             args.rootdir, recursive=args.recursive,
             pattern=args.pattern, verbose=args.verbose
         )
-        print_success("Removal completed successfully")
-
-
     elif args.subcommand == "write":
         batch_write_files(
             args.rootdir, content=args.content, append=args.append,
             recursive=args.recursive, pattern=args.pattern,
             verbose=args.verbose
         )
-        print_success("Write completed successfully")
-
-
     elif args.subcommand == "copy":
         batch_copy_files(
             args.src, args.dest, pattern=args.pattern,
             verbose=args.verbose
         )
-        print_success("Copy completed successfully")
-
-
     elif args.subcommand == "move":
         batch_move_files(
             args.src, args.dest, pattern=args.pattern,
             verbose=args.verbose
         )
-        print_success("Move completed successfully")
-
-
     elif args.subcommand == "split":
         if args.line:
             batch_split_files_by_line(
@@ -1177,40 +1200,24 @@ def main():
                 args.src, args.dest, args.chunksize,
                 verbose=args.verbose
             )
-        print_success("Split completed successfully")
-
-
     elif args.subcommand == "merge":
         batch_merge_files(
             args.src, args.output, pattern=args.pattern,
             verbose=args.verbose
         )
-        print_success("Merge completed successfully")
-
-
     elif args.subcommand == "chmod":
         batch_chmod(
             args.rootdir, args.mode, recursive=args.recursive,
             pattern=args.pattern, verbose=args.verbose
         )
-        print_success("Chmod completed successfully")
-
-
     elif args.subcommand == "find":
         batch_find_files(args.rootdir, args.pattern)
-        print_success("Find completed successfully")
-
     elif args.subcommand == "check":
         batch_check_files(args.rootdir, args.pattern)
-        print_success("Check completed successfully")
-
-
     elif args.subcommand == "deduplicate":
         batch_deduplicate(
             args.rootdir, action=args.action, dry_run=args.dry_run
         )
-        print_success("Deduplication completed successfully")
-
     elif args.subcommand == 'md5':
         batch_md5(args.rootdir, args.output,
                   output_type='csv' if args.csv else 'json',
@@ -1223,9 +1230,6 @@ def main():
             remove_original=args.remove,
             verbose=args.verbose
         )
-        print_success("Compression completed successfully")
-
-
     elif args.subcommand == "encrypt":
         batch_encrypt_files(
             args.rootdir,
@@ -1233,9 +1237,6 @@ def main():
             pattern=args.pattern,
             verbose=args.verbose
         )
-        print_success("Encryption completed successfully")
-
-
     elif args.subcommand == "decrypt":
         batch_decrypt_files(
             args.rootdir,
@@ -1243,18 +1244,12 @@ def main():
             pattern=args.pattern,
             verbose=args.verbose
         )
-        print_success("Decryption completed successfully")
-
-
     elif args.subcommand == "convert":
         batch_convert_files(
             args.src, args.dest, conversion_type=args.type,
             format=args.format.upper(), recursive=args.recursive
         )
-        print_success("Conversion completed successfully")
-
-    else:
-        print_error("Error: Invalid subcommand.")
+    print_success('OK')
 
 
 if __name__ == "__main__":
