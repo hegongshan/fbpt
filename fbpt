@@ -80,6 +80,11 @@ def makedirs_if_not_exists(dirname):
         os.makedirs(dirname)
 
 
+def mkdir_if_not_exists(dirname):
+    if not os.path.exists(dirname):
+        os.mkdir(dirname)
+
+
 def check_src_and_make_dest(src_dir, dest_dir):
     check_dir(src_dir)
     makedirs_if_not_exists(dest_dir)
@@ -193,7 +198,7 @@ def batch_mkdir(rootdir, count, prefix, level=1):
             for idx in range(count):
                 cur_prefix = prefix if cur_level == 0 else os.path.basename(dirname)
                 dirpath = os.path.join(dirname, f'{cur_prefix}_{idx}')
-                os.mkdir(dirpath)
+                mkdir_if_not_exists(dirpath)
                 new_dirs.append(dirpath)
         dirs = new_dirs
 
@@ -704,6 +709,155 @@ def batch_convert_files(source_dir, target_dir, conversion_type, format='PNG', r
 
 
 ##################################################################
+#                       Subcommand Handler                       #
+##################################################################
+def handle_classify(args):
+    rules = []
+    for rule in args.rules:
+        if rule.startswith("time:"):
+            _, fmt = rule.split(":", 1)
+            rules.append({"type": "time", "format": fmt})
+        elif rule == "size":
+            rules.append({"type": "size"})
+        elif rule == "file_type":
+            rules.append({"type": "file_type"})
+        else:
+            print_error(f"Invalid rule: {rule}")
+            exit(1)
+    batch_classify_files(args.rootdir, rules)
+
+
+def handle_rename(args):
+    batch_rename_files(
+        args.rootdir, args.prefix, recursive=args.recursive,
+        pattern=args.pattern, verbose=args.verbose
+    )
+
+
+def handle_create(args):
+    batch_create_files(
+        args.rootdir, args.count, args.prefix, ext=args.ext
+    )
+
+
+def handle_mkdir(args):
+    batch_mkdir(
+        args.rootdir, args.count, args.prefix, level=args.level
+    )
+
+
+def handle_remove(args):
+    batch_remove_files(
+        args.rootdir, recursive=args.recursive,
+        pattern=args.pattern, verbose=args.verbose
+    )
+
+
+def handle_write(args):
+    batch_write_files(
+        args.rootdir, content=args.content, append=args.append,
+        recursive=args.recursive, pattern=args.pattern,
+        verbose=args.verbose
+    )
+
+
+def handle_copy(args):
+    batch_copy_files(
+        args.src, args.dest, pattern=args.pattern,
+        verbose=args.verbose
+    )
+
+
+def handle_move(args):
+    batch_move_files(
+        args.src, args.dest, pattern=args.pattern,
+        verbose=args.verbose
+    )
+
+
+def handle_split(args):
+    if args.line:
+        batch_split_files_by_line(
+            args.src, args.dest, args.line,
+            verbose=args.verbose
+        )
+    else:
+        batch_split_files_by_byte(
+            args.src, args.dest, args.chunksize,
+            verbose=args.verbose
+        )
+
+
+def handle_merge(args):
+    batch_merge_files(
+        args.src, args.output, pattern=args.pattern,
+        verbose=args.verbose
+    )
+
+
+def handle_chmod(args):
+    batch_chmod(
+        args.rootdir, args.mode, recursive=args.recursive,
+        pattern=args.pattern, verbose=args.verbose
+    )
+
+
+def handle_find(args):
+    batch_find_files(args.rootdir, args.pattern)
+
+
+def handle_check(args):
+    batch_check_files(args.rootdir, args.pattern)
+
+
+def handle_deduplicate(args):
+    batch_deduplicate(
+        args.rootdir, action=args.action, dry_run=args.dry_run
+    )
+
+
+def handle_md5(args):
+    batch_md5(args.rootdir, args.output,
+              output_type='csv' if args.csv else 'json',
+              chunk_size=args.chunk_size, recursive=args.recursive,
+              pattern=args.pattern, verbose=args.verbose)
+
+
+def handle_compress(args):
+    batch_compress_files(
+        args.rootdir,
+        threshold=args.threshold,
+        remove_original=args.remove,
+        verbose=args.verbose
+    )
+
+
+def handle_encrypt(args):
+    batch_encrypt_files(
+        args.rootdir,
+        args.password,
+        pattern=args.pattern,
+        verbose=args.verbose
+    )
+
+
+def handle_decrypt(args):
+    batch_decrypt_files(
+        args.rootdir,
+        args.password,
+        pattern=args.pattern,
+        verbose=args.verbose
+    )
+
+
+def handle_convert(args):
+    batch_convert_files(
+        args.src, args.dest, conversion_type=args.type,
+        format=args.format.upper(), recursive=args.recursive
+    )
+
+
+##################################################################
 #                              Main                              #
 ##################################################################
 def main():
@@ -1141,114 +1295,29 @@ def main():
         parser.print_help()
         exit(1)
 
-    if args.subcommand == "classify":
-        rules = []
-        for rule in args.rules:
-            if rule.startswith("time:"):
-                _, fmt = rule.split(":", 1)
-                rules.append({"type": "time", "format": fmt})
-            elif rule == "size":
-                rules.append({"type": "size"})
-            elif rule == "file_type":
-                rules.append({"type": "file_type"})
-            else:
-                print_error(f"Invalid rule: {rule}")
-                exit(1)
-        batch_classify_files(args.rootdir, rules)
-    elif args.subcommand == "rename":
-        batch_rename_files(
-            args.rootdir, args.prefix, recursive=args.recursive,
-            pattern=args.pattern, verbose=args.verbose
-        )
-    elif args.subcommand == "create":
-        batch_create_files(
-            args.rootdir, args.count, args.prefix, ext=args.ext
-        )
-    elif args.subcommand == "mkdir":
-        batch_mkdir(
-            args.rootdir, args.count, args.prefix, level=args.level
-        )
-    elif args.subcommand == "remove":
-        batch_remove_files(
-            args.rootdir, recursive=args.recursive,
-            pattern=args.pattern, verbose=args.verbose
-        )
-    elif args.subcommand == "write":
-        batch_write_files(
-            args.rootdir, content=args.content, append=args.append,
-            recursive=args.recursive, pattern=args.pattern,
-            verbose=args.verbose
-        )
-    elif args.subcommand == "copy":
-        batch_copy_files(
-            args.src, args.dest, pattern=args.pattern,
-            verbose=args.verbose
-        )
-    elif args.subcommand == "move":
-        batch_move_files(
-            args.src, args.dest, pattern=args.pattern,
-            verbose=args.verbose
-        )
-    elif args.subcommand == "split":
-        if args.line:
-            batch_split_files_by_line(
-                args.src, args.dest, args.line,
-                verbose=args.verbose
-            )
-        else:
-            batch_split_files_by_byte(
-                args.src, args.dest, args.chunksize,
-                verbose=args.verbose
-            )
-    elif args.subcommand == "merge":
-        batch_merge_files(
-            args.src, args.output, pattern=args.pattern,
-            verbose=args.verbose
-        )
-    elif args.subcommand == "chmod":
-        batch_chmod(
-            args.rootdir, args.mode, recursive=args.recursive,
-            pattern=args.pattern, verbose=args.verbose
-        )
-    elif args.subcommand == "find":
-        batch_find_files(args.rootdir, args.pattern)
-    elif args.subcommand == "check":
-        batch_check_files(args.rootdir, args.pattern)
-    elif args.subcommand == "deduplicate":
-        batch_deduplicate(
-            args.rootdir, action=args.action, dry_run=args.dry_run
-        )
-    elif args.subcommand == 'md5':
-        batch_md5(args.rootdir, args.output,
-                  output_type='csv' if args.csv else 'json',
-                  chunk_size=args.chunk_size, recursive=args.recursive,
-                  pattern=args.pattern, verbose=args.verbose)
-    elif args.subcommand == "compress":
-        batch_compress_files(
-            args.rootdir,
-            threshold=args.threshold,
-            remove_original=args.remove,
-            verbose=args.verbose
-        )
-    elif args.subcommand == "encrypt":
-        batch_encrypt_files(
-            args.rootdir,
-            args.password,
-            pattern=args.pattern,
-            verbose=args.verbose
-        )
-    elif args.subcommand == "decrypt":
-        batch_decrypt_files(
-            args.rootdir,
-            args.password,
-            pattern=args.pattern,
-            verbose=args.verbose
-        )
-    elif args.subcommand == "convert":
-        batch_convert_files(
-            args.src, args.dest, conversion_type=args.type,
-            format=args.format.upper(), recursive=args.recursive
-        )
+    subcommand_handlers = {
+        'classify': handle_classify,
+        'rename': handle_rename,
+        'create': handle_create,
+        'mkdir': handle_mkdir,
+        'remove': handle_remove,
+        'write': handle_write,
+        'copy': handle_copy,
+        'move': handle_move,
+        'split': handle_split,
+        'merge': handle_merge,
+        'chmod': handle_chmod,
+        'find': handle_find,
+        'check': handle_check,
+        'deduplicate': handle_deduplicate,
+        'md5': handle_md5,
+        'compress': handle_compress,
+        'encrypt': handle_encrypt,
+        'decrypt': handle_decrypt,
+        'convert': handle_convert,
+    }
+    subcommand_handler = subcommand_handlers[args.subcommand]
+    subcommand_handler(args)
     print_success('OK')
 
 
