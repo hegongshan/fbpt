@@ -105,12 +105,13 @@ def print_error(message):
 ##################################################################
 #                    Batch Processing Method                     #
 ##################################################################
-def classify_by_time(file_path, time_format):
-    mtime = os.path.getmtime(file_path)
+def classify_by_time(filepath, time_format):
+    mtime = os.path.getmtime(filepath)
     return datetime.fromtimestamp(mtime).strftime(time_format)
 
 
-def classify_by_size(file_size):
+def classify_by_size(filepath):
+    file_size = os.path.getsize(filepath)
     if file_size < 1024 * 1024:
         return '0-1M'
     if file_size < 100 * 1024 * 1024:
@@ -120,7 +121,9 @@ def classify_by_size(file_size):
     return '1G+'
 
 
-def classify_by_file_type(ext):
+def classify_by_file_type(filepath):
+    _, ext = os.path.splitext(filepath)
+    ext = ext.lower()
     for category, exts in FILE_CATEGORIES.items():
         if ext in exts:
             return category.split('_')[0].lower()
@@ -135,15 +138,13 @@ def batch_classify_files(rootdir, rules):
             if not os.path.isfile(src):
                 continue
             path_parts = []
-            ext = os.path.splitext(filename)[1].lower()
-            size = os.path.getsize(src)
             for rule in rules:
                 if rule['type'] == 'time':
                     path_parts.append(classify_by_time(src, rule['format']))
                 elif rule['type'] == 'size':
-                    path_parts.append(classify_by_size(size))
+                    path_parts.append(classify_by_size(src))
                 elif rule['type'] == 'file_type':
-                    path_parts.append(classify_by_file_type(ext))
+                    path_parts.append(classify_by_file_type(src))
             dest_dir = os.path.join(rootdir, *path_parts)
             os.makedirs(dest_dir, exist_ok=True)
             dest = os.path.join(dest_dir, filename)
