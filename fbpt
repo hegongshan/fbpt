@@ -398,12 +398,12 @@ def batch_deduplicate(rootdir, action='delete', dry_run=False):
                 hashes[hash_val].append(filepath)
     for hash_value, files in hashes.items():
         if len(files) > 1:
-            print_warning(f'发现重复文件 (MD5: {hash_value[:8]}...)')
+            print_warning(f'duplicate file (MD5: {hash_value[:8]}...)')
             keep_file = files[0]
             duplicates = files[1:]
             for dup in duplicates:
                 if dry_run:
-                    print(f'[模拟] 将处理: {dup}')
+                    print(f'[dry_run] process: {dup}')
                     continue
                 if action == 'delete':
                     size_dup = os.path.getsize(dup)
@@ -413,8 +413,9 @@ def batch_deduplicate(rootdir, action='delete', dry_run=False):
                     dup_dir = os.path.join(rootdir, 'duplicates')
                     os.makedirs(dup_dir, exist_ok=True)
                     shutil.move(dup, os.path.join(dup_dir, os.path.basename(dup)))
-                print(f'已处理: {dup}')
-    print_success(f'去重完成，共释放空间: {total_saved / 1024 / 1024:.2f} MB')
+                print(f'{action}: {dup}')
+    if action == 'delete':
+        print_success(f'Free up space: {total_saved / 1024 / 1024:.2f} MB')
 
 
 def batch_md5(rootdir, output_file, output_type='csv',
@@ -1157,11 +1158,12 @@ def main():
         '-r', '--rootdir', type=str, required=True,
         help='Root directory'
     )
-    deduplicate_parser.add_argument(
+    deduplicate_action_group = deduplicate_parser.add_mutually_exclusive_group(required=True)
+    deduplicate_action_group.add_argument(
         '-a', '--action', type=str, default='delete',
         help='Action: delete or move'
     )
-    deduplicate_parser.add_argument(
+    deduplicate_action_group.add_argument(
         '-d', '--dry_run', action='store_true',
         help='Dry-run mode'
     )
