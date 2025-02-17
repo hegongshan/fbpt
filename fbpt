@@ -358,15 +358,18 @@ def batch_chmod(rootdir, mode, recursive=False, pattern=None, verbose=False):
         os.chmod(pathname, int(mode, 8))
 
 
-def batch_find_files(rootdir, keyword):
+def batch_find_files(rootdir, shell_pattern, regular_expression):
     check_dir(rootdir)
-    for filename in os.listdir(rootdir):
-        pathname = os.path.join(rootdir, filename)
-        if os.path.isdir(pathname):
-            batch_find_files(pathname, keyword)
-        else:
-            if re.search(keyword, filename, re.IGNORECASE):
-                print(pathname)
+    assert shell_pattern or regular_expression
+    for dirpath, _, filenames in os.walk(rootdir):
+        for filename in filenames:
+            pathname = os.path.join(dirpath, filename)
+            if shell_pattern:
+                if fnmatch.fnmatch(pathname, shell_pattern):
+                    print(pathname)
+            else:
+                if re.search(regular_expression, pathname, re.IGNORECASE):
+                    print(pathname)
 
 
 def batch_check_files(rootdir, pattern):
@@ -811,7 +814,7 @@ def handle_chmod(args):
 
 
 def handle_find(args):
-    batch_find_files(args.rootdir, args.pattern)
+    batch_find_files(args.rootdir, args.pattern, args.expression)
 
 
 def handle_check(args):
@@ -1138,9 +1141,14 @@ def main():
         '-r', '--rootdir', type=str, required=True,
         help='Root directory'
     )
-    find_parser.add_argument(
-        '-p', '--pattern', type=str, required=True,
-        help='Pattern'
+    find_group = find_parser.add_mutually_exclusive_group(required=True)
+    find_group.add_argument(
+        '-p', '--pattern', type=str,
+        help='Unix shell style pattern'
+    )
+    find_group.add_argument(
+        '-e', '--expression', type=str,
+        help='Regular expression'
     )
 
     # check options
