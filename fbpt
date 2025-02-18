@@ -80,6 +80,10 @@ def check_dir(dirname):
         print_error(f'Error: {dirname} does not exist!')
         exit(1)
 
+    if not os.path.isdir(dirname):
+        print_error(f'Error: {dirname} is not a directory.')
+        exit(1)
+
 
 def makedirs_if_not_exists(dirname):
     if not os.path.exists(dirname):
@@ -93,7 +97,11 @@ def mkdir_if_not_exists(dirname):
 
 def check_src_and_make_dest(src_dir, dest_dir):
     check_dir(src_dir)
-    makedirs_if_not_exists(dest_dir)
+    if not os.path.exists(dest_dir):
+        os.makedirs(dest_dir)
+    elif not os.path.isdir(dest_dir):
+        print_error(f'Error: {dest_dir} is not a directory.')
+        exit(1)
 
 
 def print_success(message):
@@ -302,40 +310,53 @@ def batch_move_files(src_dir, dest_dir, pattern=None, verbose=False):
 def batch_split_files_by_line(src_dir, dest_dir, line_count, verbose=False):
     check_src_and_make_dest(src_dir, dest_dir)
     for filename in os.listdir(src_dir):
-        if filename.startswith('.'):
+        if filename[0] == '.':
             continue
         pathname = os.path.join(src_dir, filename)
         with open(pathname, 'r') as file:
-            lines = file.readlines()
-            chunk_count = (len(lines) + line_count - 1) // line_count
-            for chunk_id in range(chunk_count):
+            chunk_id = 0
+            chunk_data = file.readlines(line_count)
+            while chunk_data:
                 chunk_path_name = os.path.join(dest_dir, f'{filename}_chunk{chunk_id}')
                 with open(chunk_path_name, 'w+') as chunk_file:
-                    chunk_file.writelines(lines[chunk_id * line_count: (chunk_id + 1) * line_count])
                     if verbose:
                         print(f'split: {pathname}, chunk id: {chunk_id}')
+                    chunk_file.writelines(chunk_data)
+                chunk_id += 1
+                chunk_data = file.readlines(line_count)
 
 
 def batch_split_files_by_byte(src_dir, dest_dir, chunk_size, verbose=False):
     check_src_and_make_dest(src_dir, dest_dir)
     for filename in os.listdir(src_dir):
+        if filename[0] == '.':
+            continue
         pathname = os.path.join(src_dir, filename)
         file_size = os.path.getsize(pathname)
         chunk_number = (file_size + chunk_size - 1) // chunk_size
         with open(pathname, 'rb') as file:
             for chunk_id in range(chunk_number):
-                chunk_pathname = os.path.join(dest_dir, f'{filename}_chunk{chunk_id}')
                 chunk_data = file.read(chunk_size)
+                chunk_pathname = os.path.join(dest_dir, f'{filename}_chunk{chunk_id}')
                 with open(chunk_pathname, 'wb') as chunk_file:
-                    chunk_file.write(chunk_data)
                     if verbose:
                         print(f'split: {pathname}, chunk id: {chunk_id}')
+                    chunk_file.write(chunk_data)
 
 
 def batch_merge_files(src_dir, output_file, pattern=None, verbose=False):
     check_dir(src_dir)
+
+    def file_sort_order(filename):
+        res = filename.split('chunk')
+        if len(res) > 1:
+            return res[0], int(res[1])
+        return res[0], ''
+
     with open(output_file, 'wb') as outfile:
-        for filename in os.listdir(src_dir):
+        for filename in sorted(os.listdir(src_dir), key=file_sort_order):
+            if filename[0] == '.':
+                continue
             if pattern and not re.search(pattern, filename, re.IGNORECASE):
                 continue
             pathname = os.path.join(src_dir, filename)
