@@ -72,6 +72,12 @@ class DeduplicateAction(Enum):
     MOVE = 'move'
 
 
+class ExportFormat(Enum):
+    JSON = 'json'
+    CSV = 'csv'
+    DEFAULT = 'default'
+
+
 ##################################################################
 #                            Utility                             #
 ##################################################################
@@ -448,38 +454,56 @@ def batch_deduplicate(rootdir, action=DeduplicateAction.DELETE.value, dry_run=Fa
         print(f'Free up space: {total_saved / 1024 / 1024:.2f} MB')
 
 
-def batch_md5(rootdir, output_file, output_type='csv',
-              chunk_size=1024 * 1024, recursive=False,
-              pattern=None, verbose=False):
+def batch_md5(rootdir, output_file, output_format=ExportFormat.CSV.value,
+              recursive=False, shell_pattern=None, regular_expression=None,
+              verbose=False):
     check_dir(rootdir)
 
     file_md5_values = {}
-    batch_md5_internal(rootdir, file_md5_values, chunk_size=chunk_size,
-                       recursive=recursive, pattern=pattern, verbose=verbose)
-    with open(output_file, 'w') as outfile:
-        if output_type == 'json':
-            json.dump(file_md5_values, outfile, indent=4)
-        else:
-            outfile.write('filepath, md5\n')
-            for filepath, md5_value in file_md5_values.items():
-                outfile.write(f'{filepath}, {md5_value}\n')
+    batch_md5_internal(rootdir, file_md5_values,
+                       recursive=recursive,
+                       shell_pattern=shell_pattern,
+                       regular_expression=regular_expression,
+                       verbose=verbose)
+    if output_file:
+        with open(output_file, 'w') as outfile:
+            if output_format == ExportFormat.JSON.value:
+                json.dump(file_md5_values, outfile, indent=4)
+            elif output_format == ExportFormat.CSV.value:
+                outfile.write('filepath, md5\n')
+                for filepath, md5_value in file_md5_values.items():
+                    outfile.write(f'{filepath}, {md5_value}\n')
+            else:
+                for filepath, md5_value in file_md5_values.items():
+                    outfile.write(f'MD5 ({filepath}) = {md5_value}\n')
+    else:
+        for filepath, md5_value in file_md5_values.items():
+            print(f'MD5 ({filepath}) = {md5_value}')
 
 
-def batch_md5_internal(rootdir, md5_values, chunk_size=1024 * 1024,
-                       recursive=False, pattern=None, verbose=False):
+def batch_md5_internal(rootdir, md5_values, recursive=False,
+                       shell_pattern=None, regular_expression=None,
+                       verbose=False):
     for filename in os.listdir(rootdir):
         pathname = os.path.join(rootdir, filename)
         if os.path.isdir(pathname):
             if recursive:
-                batch_md5_internal(pathname, md5_values, chunk_size=chunk_size,
-                                   recursive=recursive, pattern=pattern, verbose=verbose)
+                batch_md5_internal(pathname, md5_values,
+                                   recursive=recursive,
+                                   shell_pattern=shell_pattern,
+                                   regular_expression=regular_expression,
+                                   verbose=verbose)
         else:
-            if pattern and not re.search(pattern, filename, re.IGNORECASE):
-                continue
+            if shell_pattern:
+                if not fnmatch.fnmatch(pathname, shell_pattern):
+                    continue
+            elif regular_expression:
+                if not re.search(regular_expression, pathname, re.IGNORECASE):
+                    continue
 
             if verbose:
                 print(f'Calculate: {pathname}')
-            md5_values[pathname] = get_file_hash(pathname, chunk_size=chunk_size)
+            md5_values[pathname] = get_file_hash(pathname)
 
 
 def calculate_entropy(file_path):
@@ -849,10 +873,17 @@ def handle_deduplicate(args):
 
 
 def handle_md5(args):
-    batch_md5(args.rootdir, args.output,
-              output_type='csv' if args.csv else 'json',
-              chunk_size=args.chunk_size, recursive=args.recursive,
-              pattern=args.pattern, verbose=args.verbose)
+    if args.csv:
+        output_format = ExportFormat.CSV.value
+    elif args.json:
+        output_format = ExportFormat.JSON.value
+    else:
+        output_format = ExportFormat.DEFAULT.value
+    batch_md5(args.rootdir,
+              output_file=args.output, output_format=output_format,
+              recursive=args.recursive,
+              shell_pattern=args.pattern, regular_expression=args.expression,
+              verbose=args.verbose)
 
 
 def handle_compress(args):
@@ -1213,24 +1244,30 @@ def main():
         help='Root directory'
     )
     md5_parser.add_argument(
-        '-o', '--output', type=str, required=True,
+        '-o', '--output', type=str,
         help='Output file'
     )
-    md5_parser.add_argument(
-        '-c', '--chunk-size', type=int, default=1024 * 1024,
-        help='Chunk size'
+    md5_export_group = md5_parser.add_mutually_exclusive_group()
+    md5_export_group.add_argument(
+        '-j', '--json', action='store_true',
+        help='Export as JSON file.'
+    )
+    md5_export_group.add_argument(
+        '-c', '--csv', action='store_true',
+        help='Export as CSV file.'
     )
     md5_parser.add_argument(
         '-R', '--recursive', action='store_true',
         help='Recursive traversal'
     )
-    md5_parser.add_argument(
-        '-C', '--csv', action='store_true',
-        help='Export as CSV file. (By default, export as JSON file.)'
-    )
-    md5_parser.add_argument(
+    md5_condition_group = md5_parser.add_mutually_exclusive_group()
+    md5_condition_group.add_argument(
         '-p', '--pattern', type=str,
         help='Pattern'
+    )
+    md5_condition_group.add_argument(
+        '-e', '--expression', type=str,
+        help='Regular expression'
     )
     md5_parser.add_argument(
         '-v', '--verbose', action='store_true',
