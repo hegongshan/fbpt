@@ -122,6 +122,14 @@ def print_error(message):
     print(f'{COLOR_RED}{message}{COLOR_RESET}')
 
 
+def get_file_hash(filepath, chunk_size=65536):
+    hasher = hashlib.md5()
+    with open(filepath, 'rb') as f:
+        while chunk := f.read(chunk_size):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
 ##################################################################
 #                    Batch Processing Method                     #
 ##################################################################
@@ -392,10 +400,10 @@ def batch_find_files(rootdir, shell_pattern, regular_expression):
         for filename in filenames:
             pathname = os.path.join(dirpath, filename)
             if shell_pattern:
-                if fnmatch.fnmatch(pathname, shell_pattern):
+                if fnmatch.fnmatch(filename, shell_pattern):
                     print(pathname)
             else:
-                if re.search(regular_expression, pathname, re.IGNORECASE):
+                if re.search(regular_expression, filename, re.IGNORECASE):
                     print(pathname)
 
 
@@ -412,14 +420,6 @@ def batch_check_files(rootdir, pattern):
                 all_match = False
     if all_match:
         print_success('PASS')
-
-
-def get_file_hash(filepath, chunk_size=65536):
-    hasher = hashlib.md5()
-    with open(filepath, 'rb') as f:
-        while chunk := f.read(chunk_size):
-            hasher.update(chunk)
-    return hasher.hexdigest()
 
 
 def batch_deduplicate(rootdir, action=DeduplicateAction.DELETE.value, dry_run=False):
@@ -495,10 +495,10 @@ def batch_md5_internal(rootdir, md5_values, recursive=False,
                                    verbose=verbose)
         else:
             if shell_pattern:
-                if not fnmatch.fnmatch(pathname, shell_pattern):
+                if not fnmatch.fnmatch(filename, shell_pattern):
                     continue
             elif regular_expression:
-                if not re.search(regular_expression, pathname, re.IGNORECASE):
+                if not re.match(regular_expression, filename, re.IGNORECASE):
                     continue
 
             if verbose:
@@ -607,7 +607,7 @@ def decrypt_file(input_path, output_path, password):
     try:
         decrypted = fernet.decrypt(encrypted_data)
     except Exception as e:
-        raise ValueError('解密失败，密码错误或文件已损坏') from e
+        raise ValueError('Error: invalid password or corrupted file.') from e
     with open(output_path, 'wb') as f:
         f.write(decrypted)
 
@@ -736,8 +736,7 @@ def markdown_to_html(source_file, target_file):
 
 
 def batch_convert_files(source_dir, target_dir, conversion_type, format='PNG', recursive=False):
-    if not os.path.exists(target_dir):
-        os.makedirs(target_dir)
+    check_src_and_make_dest(source_dir, target_dir)
     for root, dirs, files in os.walk(source_dir):
         if not recursive and root != source_dir:
             continue
