@@ -130,6 +130,31 @@ def get_file_hash(filepath, chunk_size=65536):
     return hasher.hexdigest()
 
 
+def calculate_entropy(file_path):
+    file_size = os.path.getsize(file_path)
+    if file_size == 0:
+        return 0.0
+
+    counts = defaultdict(int)
+    chunk_size = 1024 * 1024 * 10
+    num_chunk = (file_size + chunk_size - 1) // chunk_size
+    try:
+        with open(file_path, 'rb') as f:
+            for i in range(num_chunk):
+                chunk_data = f.read(chunk_size)
+                for byte in chunk_data:
+                    counts[byte] += 1
+    except Exception as e:
+        print_error(f'Error reading {file_path}: {str(e)}')
+        return 0.0
+
+    entropy = 0.0
+    for count in counts.values():
+        p = count / file_size
+        entropy -= p * math.log2(p)
+    return entropy
+
+
 ##################################################################
 #                    Batch Processing Method                     #
 ##################################################################
@@ -506,27 +531,6 @@ def batch_md5_internal(rootdir, md5_values, recursive=False,
             md5_values[pathname] = get_file_hash(pathname)
 
 
-def calculate_entropy(file_path):
-    counts = defaultdict(int)
-    total = 0
-    try:
-        with open(file_path, 'rb') as f:
-            data = f.read()
-            total = len(data)
-            if total == 0:
-                return 0.0
-            for byte in data:
-                counts[byte] += 1
-    except Exception as e:
-        print_error(f'Error reading {file_path}: {str(e)}')
-        return 0.0
-    entropy = 0.0
-    for count in counts.values():
-        p = count / total
-        entropy -= p * math.log2(p)
-    return entropy
-
-
 def batch_compress_files(rootdir, threshold=7.0, remove_original=False, verbose=False):
     skip_compress_extensions = FILE_CATEGORIES.get('ARCHIVE_EXTENSIONS')
     check_dir(rootdir)
@@ -661,7 +665,7 @@ def convert_image_format(source_file, target_file, target_format='PNG'):
             img.save(target_file, format=target_format)
         print(f'Converted image {source_file} to {target_format} format and saved as {target_file}.')
     except Exception as e:
-        print(f'Failed to convert image {source_file} to {target_format}: {str(e)}')
+        print_error(f'Failed to convert image {source_file} to {target_format}: {str(e)}')
 
 
 def pdf_to_docx(source_file, target_file):
@@ -678,7 +682,7 @@ def pdf_to_docx(source_file, target_file):
         cv.close()
         print(f'Converted PDF {source_file} to Docx.')
     except Exception as e:
-        print(f'Failed to convert PDF {source_file} to Docx: {str(e)}')
+        print_error(f'Failed to convert PDF {source_file} to Docx: {str(e)}')
 
 
 def word_to_pdf(source_file, target_file):
@@ -697,7 +701,7 @@ def word_to_pdf(source_file, target_file):
         word.Quit()
         print(f'Converted Word {source_file} to PDF.')
     except Exception as e:
-        print(f'Failed to convert Word {source_file} to PDF: {str(e)}')
+        print_error(f'Failed to convert Word {source_file} to PDF: {str(e)}')
 
 
 def excel_to_csv(source_file, target_file):
@@ -713,7 +717,7 @@ def excel_to_csv(source_file, target_file):
         df.to_csv(target_file, index=False)
         print(f'Converted Excel {source_file} to CSV.')
     except Exception as e:
-        print(f'Failed to convert Excel {source_file} to CSV: {str(e)}')
+        print_error(f'Failed to convert Excel {source_file} to CSV: {str(e)}')
 
 
 def markdown_to_html(source_file, target_file):
@@ -732,13 +736,13 @@ def markdown_to_html(source_file, target_file):
             f.write(html)
         print(f'Converted Markdown {source_file} to HTML.')
     except Exception as e:
-        print(f'Failed to convert Markdown {source_file} to HTML: {str(e)}')
+        print_error(f'Failed to convert Markdown {source_file} to HTML: {str(e)}')
 
 
-def batch_convert_files(source_dir, target_dir, conversion_type, format='PNG', recursive=False):
-    check_src_and_make_dest(source_dir, target_dir)
-    for root, dirs, files in os.walk(source_dir):
-        if not recursive and root != source_dir:
+def batch_convert_files(src_dir, dest_dir, conversion_type, format='PNG', recursive=False):
+    check_src_and_make_dest(src_dir, dest_dir)
+    for root, dirs, files in os.walk(src_dir):
+        if not recursive and root != src_dir:
             continue
         for file in files:
             source_file = os.path.join(root, file)
@@ -749,7 +753,7 @@ def batch_convert_files(source_dir, target_dir, conversion_type, format='PNG', r
                 return
             if file_ext in config['extensions']:
                 target_file_name = os.path.splitext(file)[0] + config['target_ext']
-                target_file = os.path.join(target_dir, target_file_name)
+                target_file = os.path.join(dest_dir, target_file_name)
                 print(f'Converting {source_file} to {target_file} using {conversion_type}')
                 if conversion_type == 'image':
                     convert_image_format(source_file, target_file, format)
