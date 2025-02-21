@@ -78,6 +78,11 @@ class ExportFormat(Enum):
     DEFAULT = 'default'
 
 
+class HashAlgorithm(Enum):
+    MD5 = 'md5'
+    SHA256 = 'sha256'
+
+
 ##################################################################
 #                            Utility                             #
 ##################################################################
@@ -122,11 +127,18 @@ def print_error(message):
     print(f'{COLOR_RED}{message}{COLOR_RESET}')
 
 
-def get_file_hash(filepath, chunk_size=65536):
-    hasher = hashlib.md5()
+def get_file_hash(filepath, hash_algorithm=HashAlgorithm.MD5.value, chunk_size=65536):
+    if hash_algorithm == HashAlgorithm.MD5.value:
+        hasher = hashlib.md5()
+    else:
+        hasher = hashlib.sha256()
+
+    file_size = os.path.getsize(filepath)
+    num_chunk = (file_size + chunk_size - 1) // chunk_size
     with open(filepath, 'rb') as f:
-        while chunk := f.read(chunk_size):
-            hasher.update(chunk)
+        for i in range(num_chunk):
+            chunk_data = f.read(chunk_size)
+            hasher.update(chunk_data)
     return hasher.hexdigest()
 
 
@@ -477,41 +489,45 @@ def batch_deduplicate(rootdir, action=DeduplicateAction.DELETE.value, dry_run=Fa
         print(f'Free up space: {total_saved / 1024 / 1024:.2f} MB')
 
 
-def batch_md5(rootdir, output_file, output_format=ExportFormat.CSV.value,
-              recursive=False, shell_pattern=None, regular_expression=None,
-              verbose=False):
+def batch_hash(rootdir, hash_algorithm=HashAlgorithm.MD5.value,
+               output_file=None, output_format=ExportFormat.CSV.value,
+               recursive=False, shell_pattern=None, regular_expression=None,
+               verbose=False):
     check_dir(rootdir)
 
-    file_md5_values = {}
-    batch_md5_internal(rootdir, file_md5_values,
-                       recursive=recursive,
-                       shell_pattern=shell_pattern,
-                       regular_expression=regular_expression,
-                       verbose=verbose)
+    file_hash_values = {}
+    batch_hash_internal(rootdir, file_hash_values,
+                        hash_algorithm=hash_algorithm,
+                        recursive=recursive,
+                        shell_pattern=shell_pattern,
+                        regular_expression=regular_expression,
+                        verbose=verbose)
     if output_file:
         with open(output_file, 'w') as outfile:
             if output_format == ExportFormat.JSON.value:
-                json.dump(file_md5_values, outfile, indent=4)
+                json.dump(file_hash_values, outfile, indent=4)
             elif output_format == ExportFormat.CSV.value:
-                outfile.write('filepath, md5\n')
-                for filepath, md5_value in file_md5_values.items():
-                    outfile.write(f'{filepath}, {md5_value}\n')
+                outfile.write(f'filepath, {hash_algorithm}\n')
+                for filepath, hash_value in file_hash_values.items():
+                    outfile.write(f'{filepath}, {hash_value}\n')
             else:
-                for filepath, md5_value in file_md5_values.items():
-                    outfile.write(f'MD5 ({filepath}) = {md5_value}\n')
+                for filepath, hash_value in file_hash_values.items():
+                    outfile.write(f'{hash_algorithm} ({filepath}) = {hash_value}\n')
     else:
-        for filepath, md5_value in file_md5_values.items():
-            print(f'MD5 ({filepath}) = {md5_value}')
+        for filepath, hash_value in file_hash_values.items():
+            print(f'{hash_algorithm} ({filepath}) = {hash_value}')
 
 
-def batch_md5_internal(rootdir, md5_values, recursive=False,
-                       shell_pattern=None, regular_expression=None,
-                       verbose=False):
+def batch_hash_internal(rootdir, hash_values,
+                        hash_algorithm=HashAlgorithm.MD5.value, recursive=False,
+                        shell_pattern=None, regular_expression=None,
+                        verbose=False):
     for filename in os.listdir(rootdir):
         pathname = os.path.join(rootdir, filename)
         if os.path.isdir(pathname):
             if recursive:
-                batch_md5_internal(pathname, md5_values,
+                batch_md5_internal(pathname, hash_values,
+                                   hash_algorithm=hash_algorithm,
                                    recursive=recursive,
                                    shell_pattern=shell_pattern,
                                    regular_expression=regular_expression,
@@ -526,7 +542,7 @@ def batch_md5_internal(rootdir, md5_values, recursive=False,
 
             if verbose:
                 print(f'Calculate: {pathname}')
-            md5_values[pathname] = get_file_hash(pathname)
+            hash_values[pathname] = get_file_hash(pathname, hash_algorithm=hash_algorithm)
 
 
 def batch_compress_files(rootdir, threshold=7.0, remove_original=False, verbose=False):
@@ -873,18 +889,18 @@ def handle_deduplicate(args):
     )
 
 
-def handle_md5(args):
+def handle_hash(args):
     if args.csv:
         output_format = ExportFormat.CSV.value
     elif args.json:
         output_format = ExportFormat.JSON.value
     else:
         output_format = ExportFormat.DEFAULT.value
-    batch_md5(args.rootdir,
-              output_file=args.output, output_format=output_format,
-              recursive=args.recursive,
-              shell_pattern=args.pattern, regular_expression=args.expression,
-              verbose=args.verbose)
+    batch_hash(args.rootdir, hash_algorithm=args.hash_algorithm,
+               output_file=args.output, output_format=output_format,
+               recursive=args.recursive,
+               shell_pattern=args.pattern, regular_expression=args.expression,
+               verbose=args.verbose)
 
 
 def handle_compress(args):
@@ -1236,41 +1252,46 @@ def main():
         help='Dry-run mode'
     )
 
-    # md5 options
-    md5_parser = subparsers.add_parser(
-        'md5', help='Batch md5'
+    # hash options
+    hash_parser = subparsers.add_parser(
+        'hash', help='Batch hash'
     )
-    md5_parser.add_argument(
+    hash_parser.add_argument(
         '-r', '--rootdir', type=str, required=True,
         help='Root directory'
     )
-    md5_parser.add_argument(
+    hash_parser.add_argument(
+        '-a', '--hash-algorithm', type=str,
+        choices=[ha.value for ha in HashAlgorithm], default=HashAlgorithm.MD5.value,
+        help='Hash algorithm. By default, use md5.'
+    )
+    hash_parser.add_argument(
         '-o', '--output', type=str,
         help='Output file'
     )
-    md5_export_group = md5_parser.add_mutually_exclusive_group()
-    md5_export_group.add_argument(
+    hash_export_group = hash_parser.add_mutually_exclusive_group()
+    hash_export_group.add_argument(
         '-j', '--json', action='store_true',
         help='Export as JSON file.'
     )
-    md5_export_group.add_argument(
+    hash_export_group.add_argument(
         '-c', '--csv', action='store_true',
         help='Export as CSV file.'
     )
-    md5_parser.add_argument(
+    hash_parser.add_argument(
         '-R', '--recursive', action='store_true',
         help='Recursive traversal'
     )
-    md5_condition_group = md5_parser.add_mutually_exclusive_group()
-    md5_condition_group.add_argument(
+    hash_condition_group = hash_parser.add_mutually_exclusive_group()
+    hash_condition_group.add_argument(
         '-p', '--pattern', type=str,
         help='Pattern'
     )
-    md5_condition_group.add_argument(
+    hash_condition_group.add_argument(
         '-e', '--expression', type=str,
         help='Regular expression'
     )
-    md5_parser.add_argument(
+    hash_parser.add_argument(
         '-v', '--verbose', action='store_true',
         help='Verbose mode'
     )
@@ -1387,7 +1408,7 @@ def main():
         'find': handle_find,
         'check': handle_check,
         'deduplicate': handle_deduplicate,
-        'md5': handle_md5,
+        'hash': handle_hash,
         'compress': handle_compress,
         'encrypt': handle_encrypt,
         'decrypt': handle_decrypt,
