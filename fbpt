@@ -435,13 +435,11 @@ def batch_find_files(rootdir, shell_pattern, regular_expression):
 def batch_check_files(rootdir, pattern):
     check_dir(rootdir)
     all_match = True
-    for filename in os.listdir(rootdir):
-        pathname = os.path.join(rootdir, filename)
-        if os.path.isdir(pathname):
-            batch_check_files(pathname, pattern)
-        else:
+    for dirpath, _, filenames in os.walk(rootdir):
+        for filename in filenames:
+            pathname = os.path.join(dirpath, filename)
             if not re.fullmatch(pattern, filename, re.IGNORECASE):
-                print_error(f'{pathname} does not match!')
+                print(f'{pathname} does not match!')
                 all_match = False
     if all_match:
         print_success('PASS')
@@ -842,7 +840,7 @@ def handle_split(args):
         )
     else:
         batch_split_files_by_byte(
-            args.src, args.dest, args.chunksize,
+            args.src, args.dest, args.chunk_size,
             verbose=args.verbose
         )
 
@@ -1134,7 +1132,7 @@ def main():
         help='Line count'
     )
     split_group.add_argument(
-        '-c', '--chunksize', type=int,
+        '-c', '--chunk-size', type=int,
         help='Chunk Size (in byte)'
     )
     split_parser.add_argument(
