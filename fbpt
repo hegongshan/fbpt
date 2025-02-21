@@ -2,6 +2,7 @@
 import argparse
 import base64
 import fnmatch
+import getpass
 import hashlib
 import json
 import math
@@ -929,18 +930,28 @@ def handle_compress(args):
 
 
 def handle_encrypt(args):
+    password = getpass.getpass('Encryption password: ')
+    while not password or not password.strip():
+        print_warning('Invalid password')
+        password = getpass.getpass('Encryption password: ')
+
     batch_encrypt_files(
         args.rootdir,
-        args.password,
+        password,
         pattern=args.pattern,
         verbose=args.verbose
     )
 
 
 def handle_decrypt(args):
+    password = getpass.getpass('Decryption password: ')
+    while not password or not password.strip():
+        print_warning('Invalid password')
+        password = getpass.getpass('Decryption password: ')
+
     batch_decrypt_files(
         args.rootdir,
-        args.password,
+        password,
         pattern=args.pattern,
         verbose=args.verbose
     )
@@ -1343,11 +1354,7 @@ def main():
         help='Root directory containing files to encrypt'
     )
     encrypt_parser.add_argument(
-        '-p', '--password', type=str, required=True,
-        help='Encryption password'
-    )
-    encrypt_parser.add_argument(
-        '-m', '--pattern', type=str,
+        '-p', '--pattern', type=str,
         help='File matching pattern (e.g., \'*.txt\')'
     )
     encrypt_parser.add_argument(
@@ -1364,11 +1371,7 @@ def main():
         help='Root directory containing files to decrypt'
     )
     decrypt_parser.add_argument(
-        '-p', '--password', type=str, required=True,
-        help='Decryption password'
-    )
-    decrypt_parser.add_argument(
-        '-m', '--pattern', type=str,
+        '-p', '--pattern', type=str,
         help='File matching pattern (e.g., \'*.enc\')'
     )
     decrypt_parser.add_argument(
