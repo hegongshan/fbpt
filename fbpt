@@ -526,12 +526,12 @@ def batch_hash_internal(rootdir, hash_values,
         pathname = os.path.join(rootdir, filename)
         if os.path.isdir(pathname):
             if recursive:
-                batch_md5_internal(pathname, hash_values,
-                                   hash_algorithm=hash_algorithm,
-                                   recursive=recursive,
-                                   shell_pattern=shell_pattern,
-                                   regular_expression=regular_expression,
-                                   verbose=verbose)
+                batch_hash_internal(pathname, hash_values,
+                                    hash_algorithm=hash_algorithm,
+                                    recursive=recursive,
+                                    shell_pattern=shell_pattern,
+                                    regular_expression=regular_expression,
+                                    verbose=verbose)
         else:
             if shell_pattern:
                 if not fnmatch.fnmatch(filename, shell_pattern):
