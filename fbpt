@@ -66,6 +66,8 @@ COLOR_RESET = '\033[0m'
 
 PIP = 'pip' if sys.platform == 'win32' else 'pip3'
 
+DEFAULT_CHUNK_SIZE = 512 * 1024  # 512 KiB
+
 
 class DeduplicateAction(Enum):
     DELETE = 'delete'
@@ -115,6 +117,11 @@ def check_src_and_make_dest(src_dir, dest_dir):
         exit(1)
 
 
+def get_chunk_number(filepath, chunk_size):
+    file_size = os.path.getsize(filepath)
+    return (file_size + chunk_size - 1) // chunk_size
+
+
 def print_success(message):
     print(f'{COLOR_GREEN}{message}{COLOR_RESET}')
 
@@ -127,49 +134,6 @@ def print_error(message):
     print(f'{COLOR_RED}{message}{COLOR_RESET}')
 
 
-def get_file_hash(filepath, hash_algorithm=HashAlgorithm.MD5.value, chunk_size=65536):
-    if hash_algorithm == HashAlgorithm.MD5.value:
-        hasher = hashlib.md5()
-    else:
-        hasher = hashlib.sha256()
-
-    file_size = os.path.getsize(filepath)
-    num_chunk = (file_size + chunk_size - 1) // chunk_size
-    with open(filepath, 'rb') as f:
-        for i in range(num_chunk):
-            chunk_data = f.read(chunk_size)
-            hasher.update(chunk_data)
-    return hasher.hexdigest()
-
-
-def calculate_entropy(file_path):
-    file_size = os.path.getsize(file_path)
-    if file_size == 0:
-        return 0.0
-
-    counts = defaultdict(int)
-    chunk_size = 1024 * 1024 * 10
-    num_chunk = (file_size + chunk_size - 1) // chunk_size
-    try:
-        with open(file_path, 'rb') as f:
-            for i in range(num_chunk):
-                chunk_data = f.read(chunk_size)
-                for byte in chunk_data:
-                    counts[byte] += 1
-    except Exception as e:
-        print_error(f'Error reading {file_path}: {str(e)}')
-        return 0.0
-
-    entropy = 0.0
-    for count in counts.values():
-        p = count / file_size
-        entropy -= p * math.log2(p)
-    return entropy
-
-
-##################################################################
-#                    Batch Processing Method                     #
-##################################################################
 def classify_by_time(filepath, time_format):
     mtime = os.path.getmtime(filepath)
     return datetime.fromtimestamp(mtime).strftime(time_format)
@@ -195,6 +159,191 @@ def classify_by_file_type(filepath):
     return 'others'
 
 
+def get_file_hash(filepath, hash_algorithm=HashAlgorithm.MD5.value):
+    if hash_algorithm == HashAlgorithm.MD5.value:
+        hasher = hashlib.md5()
+    else:
+        hasher = hashlib.sha256()
+
+    with open(filepath, 'rb') as f:
+        num_chunk = get_chunk_number(filepath, DEFAULT_CHUNK_SIZE)
+        for i in range(num_chunk):
+            chunk_data = f.read(DEFAULT_CHUNK_SIZE)
+            hasher.update(chunk_data)
+    return hasher.hexdigest()
+
+
+def calculate_entropy(filepath):
+    file_size = os.path.getsize(filepath)
+    if file_size == 0:
+        return 0.0
+
+    counts = defaultdict(int)
+    try:
+        with open(filepath, 'rb') as f:
+            num_chunk = get_chunk_number(filepath, DEFAULT_CHUNK_SIZE)
+            for i in range(num_chunk):
+                chunk_data = f.read(DEFAULT_CHUNK_SIZE)
+                for byte in chunk_data:
+                    counts[byte] += 1
+    except Exception as e:
+        print_error(f'Error reading {filepath}: {str(e)}')
+        return 0.0
+
+    entropy = 0.0
+    for count in counts.values():
+        p = count / file_size
+        entropy -= p * math.log2(p)
+    return entropy
+
+
+def derive_key(password: str, salt: bytes) -> bytes:
+    try:
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    except ImportError:
+        print_error('Error: No module named cryptography. '
+                    f'Please run "{PIP} install cryptography".')
+        exit(1)
+
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+    )
+    return base64.urlsafe_b64encode(kdf.derive(password.encode()))
+
+
+def encrypt_file(input_path, output_path, password):
+    try:
+        from cryptography.fernet import Fernet
+    except ImportError:
+        print_error('Error: No module named cryptography. '
+                    f'Please run "{PIP} install cryptography".')
+        exit(1)
+
+    salt = os.urandom(16)
+    key = derive_key(password, salt)
+    fernet = Fernet(key)
+    with open(input_path, 'rb') as f:
+        data = f.read()
+    encrypted = fernet.encrypt(data)
+    with open(output_path, 'wb') as f:
+        f.write(salt + encrypted)
+
+
+def decrypt_file(input_path, output_path, password):
+    try:
+        from cryptography.fernet import Fernet
+    except ImportError:
+        print_error('Error: No module named cryptography. '
+                    f'Please run "{PIP} install cryptography".')
+        exit(1)
+
+    with open(input_path, 'rb') as f:
+        salt = f.read(16)
+        encrypted_data = f.read()
+    key = derive_key(password, salt)
+    fernet = Fernet(key)
+    try:
+        decrypted = fernet.decrypt(encrypted_data)
+    except Exception as e:
+        raise ValueError('Error: invalid password or corrupted file.') from e
+    with open(output_path, 'wb') as f:
+        f.write(decrypted)
+
+
+def convert_image_format(source_file, target_file, target_format='PNG'):
+    try:
+        from PIL import Image
+    except ImportError:
+        print_error('Error: No module named PIL. '
+                    f'Please run "{PIP} install Pillow".')
+        exit(1)
+
+    try:
+        with Image.open(source_file) as img:
+            img.save(target_file, format=target_format)
+        print(f'Converted image {source_file} to {target_format} format and saved as {target_file}.')
+    except Exception as e:
+        print_error(f'Failed to convert image {source_file} to {target_format}: {str(e)}')
+
+
+def pdf_to_docx(source_file, target_file):
+    try:
+        from pdf2docx import Converter
+    except ImportError:
+        print_error('Error: No module named pdf2docx. '
+                    f'Please run "{PIP} install pdf2docx".')
+        exit(1)
+
+    try:
+        cv = Converter(source_file)
+        cv.convert(target_file, start=0, end=None)
+        cv.close()
+        print(f'Converted PDF {source_file} to Docx.')
+    except Exception as e:
+        print_error(f'Failed to convert PDF {source_file} to Docx: {str(e)}')
+
+
+def word_to_pdf(source_file, target_file):
+    try:
+        from win32com import client as wc
+    except ImportError:
+        print_error('Error: No module named win32com. '
+                    f'Please run "{PIP} install pywin32".')
+        exit(1)
+
+    try:
+        word = wc.Dispatch('Word.Application')
+        doc = word.Documents.Open(os.path.abspath(source_file))
+        doc.SaveAs(os.path.abspath(target_file), FileFormat=17)
+        doc.Close()
+        word.Quit()
+        print(f'Converted Word {source_file} to PDF.')
+    except Exception as e:
+        print_error(f'Failed to convert Word {source_file} to PDF: {str(e)}')
+
+
+def excel_to_csv(source_file, target_file):
+    try:
+        import pandas as pd
+    except ImportError:
+        print_error('Error: No module named pandas. '
+                    f'Please run "{PIP} install pandas".')
+        exit(1)
+
+    try:
+        df = pd.read_excel(source_file)
+        df.to_csv(target_file, index=False)
+        print(f'Converted Excel {source_file} to CSV.')
+    except Exception as e:
+        print_error(f'Failed to convert Excel {source_file} to CSV: {str(e)}')
+
+
+def markdown_to_html(source_file, target_file):
+    try:
+        import markdown
+    except ImportError:
+        print_error('Error: No module named markdown. '
+                    f'Please run "{PIP} install markdown".')
+        exit(1)
+
+    try:
+        with open(source_file, 'r', encoding='utf-8') as f:
+            text = f.read()
+        html = markdown.markdown(text)
+        with open(target_file, 'w', encoding='utf-8') as f:
+            f.write(html)
+        print(f'Converted Markdown {source_file} to HTML.')
+    except Exception as e:
+        print_error(f'Failed to convert Markdown {source_file} to HTML: {str(e)}')
+
+
+##################################################################
+#                    Batch Processing Method                     #
+##################################################################
 def batch_classify_files(rootdir, rules):
     check_dir(rootdir)
     for root, _, files in os.walk(rootdir):
@@ -414,7 +563,9 @@ def batch_merge_files(src_dir, output_file, pattern=None, verbose=False):
             if verbose:
                 print(f'merge {pathname}')
             with open(pathname, 'rb') as infile:
-                outfile.write(infile.read())
+                num_chunk = get_chunk_number(pathname, DEFAULT_CHUNK_SIZE)
+                for i in range(num_chunk):
+                    outfile.write(infile.read(DEFAULT_CHUNK_SIZE))
 
 
 def batch_chmod(rootdir, mode, recursive=False, pattern=None, verbose=False):
@@ -573,63 +724,6 @@ def batch_compress_files(rootdir, threshold=7.0, remove_original=False, verbose=
                         print_error(f'Failed to remove {src}: {str(e)}')
 
 
-def derive_key(password: str, salt: bytes) -> bytes:
-    try:
-        from cryptography.hazmat.primitives import hashes
-        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-    except ImportError:
-        print_error('Error: No module named cryptography. '
-                    f'Please run "{PIP} install cryptography".')
-        exit(1)
-
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=salt,
-        iterations=100000,
-    )
-    return base64.urlsafe_b64encode(kdf.derive(password.encode()))
-
-
-def encrypt_file(input_path, output_path, password):
-    try:
-        from cryptography.fernet import Fernet
-    except ImportError:
-        print_error('Error: No module named cryptography. '
-                    f'Please run "{PIP} install cryptography".')
-        exit(1)
-
-    salt = os.urandom(16)
-    key = derive_key(password, salt)
-    fernet = Fernet(key)
-    with open(input_path, 'rb') as f:
-        data = f.read()
-    encrypted = fernet.encrypt(data)
-    with open(output_path, 'wb') as f:
-        f.write(salt + encrypted)
-
-
-def decrypt_file(input_path, output_path, password):
-    try:
-        from cryptography.fernet import Fernet
-    except ImportError:
-        print_error('Error: No module named cryptography. '
-                    f'Please run "{PIP} install cryptography".')
-        exit(1)
-
-    with open(input_path, 'rb') as f:
-        salt = f.read(16)
-        encrypted_data = f.read()
-    key = derive_key(password, salt)
-    fernet = Fernet(key)
-    try:
-        decrypted = fernet.decrypt(encrypted_data)
-    except Exception as e:
-        raise ValueError('Error: invalid password or corrupted file.') from e
-    with open(output_path, 'wb') as f:
-        f.write(decrypted)
-
-
 def batch_encrypt_files(rootdir, password, pattern=None, verbose=False):
     check_dir(rootdir)
     for root, _, files in os.walk(rootdir):
@@ -664,93 +758,6 @@ def batch_decrypt_files(rootdir, password, pattern=None, verbose=False):
                     print(f'Decrypted {input_path} -> {output_path}')
             except Exception as e:
                 print_error(f'Decryption failed for {input_path}: {str(e)}')
-
-
-def convert_image_format(source_file, target_file, target_format='PNG'):
-    try:
-        from PIL import Image
-    except ImportError:
-        print_error('Error: No module named PIL. '
-                    f'Please run "{PIP} install Pillow".')
-        exit(1)
-
-    try:
-        with Image.open(source_file) as img:
-            img.save(target_file, format=target_format)
-        print(f'Converted image {source_file} to {target_format} format and saved as {target_file}.')
-    except Exception as e:
-        print_error(f'Failed to convert image {source_file} to {target_format}: {str(e)}')
-
-
-def pdf_to_docx(source_file, target_file):
-    try:
-        from pdf2docx import Converter
-    except ImportError:
-        print_error('Error: No module named pdf2docx. '
-                    f'Please run "{PIP} install pdf2docx".')
-        exit(1)
-
-    try:
-        cv = Converter(source_file)
-        cv.convert(target_file, start=0, end=None)
-        cv.close()
-        print(f'Converted PDF {source_file} to Docx.')
-    except Exception as e:
-        print_error(f'Failed to convert PDF {source_file} to Docx: {str(e)}')
-
-
-def word_to_pdf(source_file, target_file):
-    try:
-        from win32com import client as wc
-    except ImportError:
-        print_error('Error: No module named win32com. '
-                    f'Please run "{PIP} install pywin32".')
-        exit(1)
-
-    try:
-        word = wc.Dispatch('Word.Application')
-        doc = word.Documents.Open(os.path.abspath(source_file))
-        doc.SaveAs(os.path.abspath(target_file), FileFormat=17)
-        doc.Close()
-        word.Quit()
-        print(f'Converted Word {source_file} to PDF.')
-    except Exception as e:
-        print_error(f'Failed to convert Word {source_file} to PDF: {str(e)}')
-
-
-def excel_to_csv(source_file, target_file):
-    try:
-        import pandas as pd
-    except ImportError:
-        print_error('Error: No module named pandas. '
-                    f'Please run "{PIP} install pandas".')
-        exit(1)
-
-    try:
-        df = pd.read_excel(source_file)
-        df.to_csv(target_file, index=False)
-        print(f'Converted Excel {source_file} to CSV.')
-    except Exception as e:
-        print_error(f'Failed to convert Excel {source_file} to CSV: {str(e)}')
-
-
-def markdown_to_html(source_file, target_file):
-    try:
-        import markdown
-    except ImportError:
-        print_error('Error: No module named markdown. '
-                    f'Please run "{PIP} install markdown".')
-        exit(1)
-
-    try:
-        with open(source_file, 'r', encoding='utf-8') as f:
-            text = f.read()
-        html = markdown.markdown(text)
-        with open(target_file, 'w', encoding='utf-8') as f:
-            f.write(html)
-        print(f'Converted Markdown {source_file} to HTML.')
-    except Exception as e:
-        print_error(f'Failed to convert Markdown {source_file} to HTML: {str(e)}')
 
 
 def batch_convert_files(src_dir, dest_dir, conversion_type, format='PNG', recursive=False):
