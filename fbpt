@@ -226,11 +226,15 @@ def encrypt_file(input_path, output_path, password):
     salt = os.urandom(16)
     key = derive_key(password, salt)
     fernet = Fernet(key)
-    with open(input_path, 'rb') as f:
-        data = f.read()
-    encrypted = fernet.encrypt(data)
-    with open(output_path, 'wb') as f:
-        f.write(salt + encrypted)
+
+    with open(output_path, 'wb') as outfile:
+        outfile.write(salt)
+        with open(input_path, 'rb') as infile:
+            num_chunk = get_chunk_number(input_path, DEFAULT_CHUNK_SIZE)
+            for i in range(num_chunk):
+                chunk_data = infile.read(DEFAULT_CHUNK_SIZE)
+                encrypted_chunk_data = fernet.encrypt(chunk_data)
+                outfile.write(encrypted_chunk_data)
 
 
 def decrypt_file(input_path, output_path, password):
@@ -241,17 +245,22 @@ def decrypt_file(input_path, output_path, password):
                     f'Please run "{PIP} install cryptography".')
         exit(1)
 
-    with open(input_path, 'rb') as f:
-        salt = f.read(16)
-        encrypted_data = f.read()
-    key = derive_key(password, salt)
-    fernet = Fernet(key)
-    try:
-        decrypted = fernet.decrypt(encrypted_data)
-    except Exception as e:
-        raise ValueError('Error: invalid password or corrupted file.') from e
-    with open(output_path, 'wb') as f:
-        f.write(decrypted)
+    with open(input_path, 'rb') as infile:
+        salt = infile.read(16)
+        key = derive_key(password, salt)
+        fernet = Fernet(key)
+
+        remaining_size = os.path.getsize(input_path) - 16
+        num_chunk = (remaining_size + DEFAULT_CHUNK_SIZE - 1) // DEFAULT_CHUNK_SIZE
+        with open(output_path, 'wb') as outfile:
+            for i in range(num_chunk):
+                encrypted_chunk_data = infile.read(DEFAULT_CHUNK_SIZE)
+                try:
+                    decrypted_chunk_data = fernet.decrypt(encrypted_chunk_data)
+                    outfile.write(decrypted_chunk_data)
+                except Exception:
+                    print_error('Error: invalid password or corrupted file.')
+                    exit(1)
 
 
 def convert_image_format(source_file, target_file, target_format='PNG'):
