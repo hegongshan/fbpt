@@ -5,13 +5,13 @@ usage:
 ```shell
 $ ./fbpt -h
 usage: fbpt [-h]
-            {classify,rename,create,mkdir,remove,write,copy,move,split,merge,chmod,find,check,deduplicate,hash,compress,encrypt,decrypt,convert}
+            {classify,rename,create,mkdir,remove,write,copy,move,split,merge,chmod,find,check-name,check-integrity,deduplicate,hash,compress,encrypt,decrypt,convert}
             ...
 
 File batch processing tool (fbpt)
 
 positional arguments:
-  {classify,rename,create,mkdir,remove,write,copy,move,split,merge,chmod,find,check,deduplicate,hash,compress,encrypt,decrypt,convert}
+  {classify,rename,create,mkdir,remove,write,copy,move,split,merge,chmod,find,check-name,check-integrity,deduplicate,hash,compress,encrypt,decrypt,convert}
                         subcommand
     classify            Classify files into directory structure
     rename              Batch rename file
@@ -25,7 +25,8 @@ positional arguments:
     merge               Batch merge file
     chmod               Batch chmod
     find                Batch find
-    check               Batch check
+    check-name          Batch check file name
+    check-integrity     Batch check file integrity
     deduplicate         Batch deduplicate
     hash                Batch hash
     compress            Compress files based on entropy analysis
@@ -35,5 +36,4 @@ positional arguments:
 
 options:
   -h, --help            show this help message and exit
-
 ```

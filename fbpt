@@ -645,7 +645,6 @@ def batch_check_file_integrity(rootdir, input_hash_file,
             print(f'mismatch: {file_path} (expected: {expected_file_hash}, real: {real_file_hash})')
 
 
-
 def batch_deduplicate(rootdir, action=DeduplicateAction.DELETE.value, dry_run=False):
     check_dir(rootdir)
     hashes = defaultdict(list)
