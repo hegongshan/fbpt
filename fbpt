@@ -605,7 +605,7 @@ def batch_find_files(rootdir, shell_pattern, regular_expression):
                     print(pathname)
 
 
-def batch_check_files(rootdir, pattern):
+def batch_check_file_name(rootdir, pattern):
     check_dir(rootdir)
     all_match = True
     for dirpath, _, filenames in os.walk(rootdir):
@@ -616,6 +616,34 @@ def batch_check_files(rootdir, pattern):
                 all_match = False
     if all_match:
         print_success('PASS')
+
+
+def batch_check_file_integrity(rootdir, input_hash_file,
+                               hash_algorithm=HashAlgorithm.MD5.value):
+    check_dir(rootdir)
+
+    expected_file_hash_dict = {}
+    with open(input_hash_file, 'r') as file:
+        for line in file:
+            line = line.strip()
+            file_path, file_hash = line.split(' = ')
+            expected_file_hash_dict[file_path] = file_hash
+
+    file_paths = []
+    for dirpath, _, filenames in os.walk(rootdir):
+        for filename in filenames:
+            file_paths.append(os.path.join(os.path.abspath(dirpath), filename))
+
+    for file_path in file_paths:
+        if file_path not in expected_file_hash_dict:
+            continue
+
+        expected_file_hash = expected_file_hash_dict[file_path]
+        real_file_hash = get_file_hash(file_path, hash_algorithm=hash_algorithm)
+
+        if expected_file_hash != real_file_hash:
+            print(f'mismatch: {file_path} (expected: {expected_file_hash}, real: {real_file_hash})')
+
 
 
 def batch_deduplicate(rootdir, action=DeduplicateAction.DELETE.value, dry_run=False):
@@ -673,7 +701,7 @@ def batch_hash(rootdir, hash_algorithm=HashAlgorithm.MD5.value,
                     outfile.write(f'{filepath}, {hash_value}\n')
             else:
                 for filepath, hash_value in file_hash_values.items():
-                    outfile.write(f'{hash_algorithm} ({filepath}) = {hash_value}\n')
+                    outfile.write(f'{filepath} = {hash_value}\n')
     else:
         for filepath, hash_value in file_hash_values.items():
             print(f'{hash_algorithm} ({filepath}) = {hash_value}')
@@ -684,7 +712,7 @@ def batch_hash_internal(rootdir, hash_values,
                         shell_pattern=None, regular_expression=None,
                         verbose=False):
     for filename in os.listdir(rootdir):
-        pathname = os.path.join(rootdir, filename)
+        pathname = os.path.join(os.path.abspath(rootdir), filename)
         if os.path.isdir(pathname):
             if recursive:
                 batch_hash_internal(pathname, hash_values,
@@ -896,8 +924,12 @@ def handle_find(args):
     batch_find_files(args.rootdir, args.pattern, args.expression)
 
 
-def handle_check(args):
-    batch_check_files(args.rootdir, args.pattern)
+def handle_check_file_name(args):
+    batch_check_file_name(args.rootdir, args.pattern)
+
+
+def handle_check_file_integrity(args):
+    batch_check_file_integrity(args.rootdir, args.input, args.hash_algorithm)
 
 
 def handle_deduplicate(args):
@@ -1247,17 +1279,36 @@ def main():
         help='Regular expression'
     )
 
-    # check options
-    check_parser = subparsers.add_parser(
-        'check', help='Batch check'
+    # check-name options
+    check_name_parser = subparsers.add_parser(
+        'check-name', help='Batch check file name'
     )
-    check_parser.add_argument(
+    check_name_parser.add_argument(
         '-r', '--rootdir', type=str, required=True,
         help='Root directory'
     )
-    check_parser.add_argument(
+    check_name_parser.add_argument(
         '-p', '--pattern', type=str, required=True,
         help='Pattern'
+    )
+
+    # check-integrity options
+    check_integrity_parser = subparsers.add_parser(
+        'check-integrity', help='Batch check file integrity'
+    )
+    check_integrity_parser.add_argument(
+        '-r', '--rootdir', type=str, required=True,
+        help='Root directory'
+    )
+    check_integrity_parser.add_argument(
+        '-i', '--input', type=str, required=True,
+        help='Input hash file'
+    )
+    check_integrity_parser.add_argument(
+        '-a', '--hash-algorithm', type=str,
+        choices=[ha.value for ha in HashAlgorithm],
+        default=HashAlgorithm.MD5.value,
+        help='Hash algorithm. By default, use md5.'
     )
 
     # deduplicate options
@@ -1425,7 +1476,8 @@ def main():
         'merge': handle_merge,
         'chmod': handle_chmod,
         'find': handle_find,
-        'check': handle_check,
+        'check-name': handle_check_file_name,
+        'check-integrity': handle_check_file_integrity,
         'deduplicate': handle_deduplicate,
         'hash': handle_hash,
         'compress': handle_compress,
