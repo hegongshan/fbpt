@@ -174,6 +174,14 @@ def get_file_hash(filepath, hash_algorithm=HashAlgorithm.MD5.value):
     return hasher.hexdigest()
 
 
+def file_permission_compare(real_mode, least_mode):
+    real_u, real_g, real_o = real_mode
+    least_u, least_g, least_o = least_mode
+    if real_u < least_u or real_g < least_g or real_o < least_o:
+        return False
+    return True
+
+
 def calculate_entropy(filepath):
     file_size = os.path.getsize(filepath)
     if file_size == 0:
@@ -621,7 +629,7 @@ def batch_replace_files(rootdir, pattern, replace):
             os.rename(tmp_file_path, file_path)
 
 
-def batch_check_file_name(rootdir, pattern):
+def batch_file_name_check(rootdir, pattern):
     check_dir(rootdir)
     all_match = True
     for dirpath, _, filenames in os.walk(rootdir):
@@ -634,7 +642,7 @@ def batch_check_file_name(rootdir, pattern):
         print_success('PASS')
 
 
-def batch_check_file_integrity(rootdir, input_hash_file,
+def batch_file_integrity_check(rootdir, input_hash_file,
                                hash_algorithm=HashAlgorithm.MD5.value):
     check_dir(rootdir)
 
@@ -659,6 +667,25 @@ def batch_check_file_integrity(rootdir, input_hash_file,
 
         if expected_file_hash != real_file_hash:
             print(f'mismatch: {file_path} (expected: {expected_file_hash}, real: {real_file_hash})')
+
+
+def batch_file_permission_check(rootdir, least_mode):
+    if len(least_mode) > 3 or any(m < '0' or m > '7' for m in least_mode):
+        print_error(f'Error: invalid mode \'{least_mode}\'')
+        exit(1)
+
+    for dirpath, dirnames, filenames in os.walk(rootdir):
+        for dirname in dirnames:
+            pathname = os.path.join(dirpath, dirname)
+            real_mode = oct(os.lstat(pathname).st_mode)[-3:]
+            if not file_permission_compare(real_mode, least_mode):
+                print_error(f'Permission mismatch (path: {pathname}, mode: {real_mode})')
+
+        for filename in filenames:
+            pathname = os.path.join(dirpath, filename)
+            real_mode = oct(os.lstat(pathname).st_mode)[-3:]
+            if not file_permission_compare(real_mode, least_mode):
+                print_error(f'Permission mismatch (path: {pathname}, mode: {real_mode})')
 
 
 def batch_deduplicate(rootdir, action=DeduplicateAction.DELETE.value, dry_run=False):
@@ -943,12 +970,16 @@ def handle_replace(args):
     batch_replace_files(args.rootdir, args.search, args.replace)
 
 
-def handle_check_file_name(args):
-    batch_check_file_name(args.rootdir, args.pattern)
+def handle_file_name_check(args):
+    batch_file_name_check(args.rootdir, args.pattern)
 
 
-def handle_check_file_integrity(args):
-    batch_check_file_integrity(args.rootdir, args.input, args.hash_algorithm)
+def handle_file_integrity_check(args):
+    batch_file_integrity_check(args.rootdir, args.input, args.algorithm)
+
+
+def handle_file_permission_check(args):
+    batch_file_permission_check(args.rootdir, args.mode)
 
 
 def handle_deduplicate(args):
@@ -964,7 +995,7 @@ def handle_hash(args):
         output_format = ExportFormat.JSON.value
     else:
         output_format = ExportFormat.DEFAULT.value
-    batch_hash(args.rootdir, hash_algorithm=args.hash_algorithm,
+    batch_hash(args.rootdir, hash_algorithm=args.algorithm,
                output_file=args.output, output_format=output_format,
                recursive=args.recursive,
                shell_pattern=args.pattern, regular_expression=args.expression,
@@ -1315,36 +1346,49 @@ def main():
         help='String'
     )
 
-    # check-name options
-    check_name_parser = subparsers.add_parser(
-        'check-name', help='Batch check file name'
+    # name-check options
+    name_check_parser = subparsers.add_parser(
+        'name-check', help='Batch file name check'
     )
-    check_name_parser.add_argument(
+    name_check_parser.add_argument(
         '-r', '--rootdir', type=str, required=True,
         help='Root directory'
     )
-    check_name_parser.add_argument(
+    name_check_parser.add_argument(
         '-p', '--pattern', type=str, required=True,
         help='Pattern'
     )
 
-    # check-integrity options
-    check_integrity_parser = subparsers.add_parser(
-        'check-integrity', help='Batch check file integrity'
+    # integrity-check options
+    integrity_check_parser = subparsers.add_parser(
+        'integrity-check', help='Batch file integrity check'
     )
-    check_integrity_parser.add_argument(
+    integrity_check_parser.add_argument(
         '-r', '--rootdir', type=str, required=True,
         help='Root directory'
     )
-    check_integrity_parser.add_argument(
+    integrity_check_parser.add_argument(
         '-i', '--input', type=str, required=True,
         help='Input hash file'
     )
-    check_integrity_parser.add_argument(
-        '-a', '--hash-algorithm', type=str,
+    integrity_check_parser.add_argument(
+        '-a', '--algorithm', type=str,
         choices=[ha.value for ha in HashAlgorithm],
         default=HashAlgorithm.MD5.value,
         help='Hash algorithm. By default, use md5.'
+    )
+
+    # permission-check options
+    permission_check_parser = subparsers.add_parser(
+        'permission-check', help='Batch file permission check'
+    )
+    permission_check_parser.add_argument(
+        '-r', '--rootdir', type=str, required=True,
+        help='Root directory'
+    )
+    permission_check_parser.add_argument(
+        '-m', '--mode', type=str, required=True,
+        help='Least permission'
     )
 
     # deduplicate options
@@ -1375,7 +1419,7 @@ def main():
         help='Root directory'
     )
     hash_parser.add_argument(
-        '-a', '--hash-algorithm', type=str,
+        '-a', '--algorithm', type=str,
         choices=[ha.value for ha in HashAlgorithm], default=HashAlgorithm.MD5.value,
         help='Hash algorithm. By default, use md5.'
     )
@@ -1513,8 +1557,9 @@ def main():
         'chmod': handle_chmod,
         'find': handle_find,
         'replace': handle_replace,
-        'check-name': handle_check_file_name,
-        'check-integrity': handle_check_file_integrity,
+        'name-check': handle_file_name_check,
+        'integrity-check': handle_file_integrity_check,
+        'permission-check': handle_file_permission_check,
         'deduplicate': handle_deduplicate,
         'hash': handle_hash,
         'compress': handle_compress,
