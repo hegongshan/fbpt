@@ -605,6 +605,22 @@ def batch_find_files(rootdir, shell_pattern, regular_expression):
                     print(pathname)
 
 
+def batch_replace_files(rootdir, pattern, replace):
+    check_dir(rootdir)
+    for dirpath, _, filenames in os.walk(rootdir):
+        for filename in filenames:
+            file_path = os.path.join(dirpath, filename)
+            tmp_file_path = os.path.join(dirpath, f'{filename}.tmp')
+            num_chunk = get_chunk_number(file_path, DEFAULT_CHUNK_SIZE)
+            with open(tmp_file_path, 'w+') as outfile:
+                with open(file_path, 'r') as infile:
+                    for i in range(num_chunk):
+                        chunk_data = infile.read(DEFAULT_CHUNK_SIZE)
+                        replaced_chunk_data = re.sub(pattern, replace, chunk_data)
+                        outfile.write(replaced_chunk_data)
+            os.rename(tmp_file_path, file_path)
+
+
 def batch_check_file_name(rootdir, pattern):
     check_dir(rootdir)
     all_match = True
@@ -674,7 +690,7 @@ def batch_deduplicate(rootdir, action=DeduplicateAction.DELETE.value, dry_run=Fa
                     shutil.move(dup, os.path.join(dup_dir, os.path.basename(dup)))
                 print(f'{action}: {dup}')
     if action == DeduplicateAction.DELETE.value:
-        print(f'Free up space: {total_saved / 1024 / 1024:.2f} MB')
+        print(f'Free up space: {total_saved / 1024 / 1024:.2f} MiB')
 
 
 def batch_hash(rootdir, hash_algorithm=HashAlgorithm.MD5.value,
@@ -921,6 +937,10 @@ def handle_chmod(args):
 
 def handle_find(args):
     batch_find_files(args.rootdir, args.pattern, args.expression)
+
+
+def handle_replace(args):
+    batch_replace_files(args.rootdir, args.search, args.replace)
 
 
 def handle_check_file_name(args):
@@ -1278,6 +1298,23 @@ def main():
         help='Regular expression'
     )
 
+    # replace options
+    replace_parser = subparsers.add_parser(
+        'replace', help='Batch replace file content'
+    )
+    replace_parser.add_argument(
+        '-r', '--rootdir', type=str, required=True,
+        help='Root directory'
+    )
+    replace_parser.add_argument(
+        '--search', type=str, required=True,
+        help='Regular expression'
+    )
+    replace_parser.add_argument(
+        '--replace', type=str, required=True,
+        help='String'
+    )
+
     # check-name options
     check_name_parser = subparsers.add_parser(
         'check-name', help='Batch check file name'
@@ -1475,6 +1512,7 @@ def main():
         'merge': handle_merge,
         'chmod': handle_chmod,
         'find': handle_find,
+        'replace': handle_replace,
         'check-name': handle_check_file_name,
         'check-integrity': handle_check_file_integrity,
         'deduplicate': handle_deduplicate,
