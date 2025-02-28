@@ -160,7 +160,7 @@ def classify_by_file_type(filepath):
     return 'others'
 
 
-def get_file_hash(filepath, hash_algorithm=HashAlgorithm.MD5.value):
+def calculate_file_hash(filepath, hash_algorithm=HashAlgorithm.MD5.value):
     if hash_algorithm == HashAlgorithm.MD5.value:
         hasher = hashlib.md5()
     else:
@@ -174,7 +174,7 @@ def get_file_hash(filepath, hash_algorithm=HashAlgorithm.MD5.value):
     return hasher.hexdigest()
 
 
-def file_permission_compare(real_mode, least_mode):
+def compare_file_permission(real_mode, least_mode):
     real_u, real_g, real_o = real_mode
     least_u, least_g, least_o = least_mode
     if real_u < least_u or real_g < least_g or real_o < least_o:
@@ -663,7 +663,7 @@ def batch_file_integrity_check(rootdir, input_hash_file,
             continue
 
         expected_file_hash = expected_file_hash_dict[file_path]
-        real_file_hash = get_file_hash(file_path, hash_algorithm=hash_algorithm)
+        real_file_hash = calculate_file_hash(file_path, hash_algorithm=hash_algorithm)
 
         if expected_file_hash != real_file_hash:
             print(f'mismatch: {file_path} (expected: {expected_file_hash}, real: {real_file_hash})')
@@ -678,13 +678,13 @@ def batch_file_permission_check(rootdir, least_mode):
         for dirname in dirnames:
             pathname = os.path.join(dirpath, dirname)
             real_mode = oct(os.lstat(pathname).st_mode)[-3:]
-            if not file_permission_compare(real_mode, least_mode):
+            if not compare_file_permission(real_mode, least_mode):
                 print_error(f'Permission mismatch (path: {pathname}, mode: {real_mode})')
 
         for filename in filenames:
             pathname = os.path.join(dirpath, filename)
             real_mode = oct(os.lstat(pathname).st_mode)[-3:]
-            if not file_permission_compare(real_mode, least_mode):
+            if not compare_file_permission(real_mode, least_mode):
                 print_error(f'Permission mismatch (path: {pathname}, mode: {real_mode})')
 
 
@@ -696,7 +696,7 @@ def batch_deduplicate(rootdir, action=DeduplicateAction.DELETE.value, dry_run=Fa
         for filename in files:
             filepath = os.path.join(root, filename)
             if os.path.isfile(filepath):
-                hash_val = get_file_hash(filepath)
+                hash_val = calculate_file_hash(filepath)
                 hashes[hash_val].append(filepath)
     for hash_value, files in hashes.items():
         if len(files) > 1:
@@ -773,7 +773,7 @@ def batch_hash_internal(rootdir, hash_values,
 
             if verbose:
                 print(f'Calculate: {pathname}')
-            hash_values[pathname] = get_file_hash(pathname, hash_algorithm=hash_algorithm)
+            hash_values[pathname] = calculate_file_hash(pathname, hash_algorithm=hash_algorithm)
 
 
 def batch_compress_files(rootdir, threshold=7.0, remove_original=False, verbose=False):
