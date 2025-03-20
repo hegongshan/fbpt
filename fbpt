@@ -29,7 +29,7 @@ FILE_CATEGORIES = {
     'AUDIO_EXTENSIONS': ['.mp3', '.wav', '.m4a'],
     'TEXT_EXTENSIONS': ['.txt', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf',
                         '.rtf', '.odt', '.md'],
-    'ARCHIVE_EXTENSIONS': ['.rar', '.7z', '.zip', '.gz', '.xz', '.tar'],
+    'ARCHIVE_EXTENSIONS': ['.rar', '.7z', '.zip', '.bz2', '.gz', '.xz', '.tar'],
     'CODE_EXTENSIONS': ['.c', '.cpp', '.cc', '.cxx', '.cp', '.c++', '.h', '.hpp', '.hxx', '.java', '.kt',
                         '.scala', '.sc', '.py', '.rs', '.rb', '.php', '.html', '.htm', '.css', '.js',
                         '.ts', '.sh', '.bat'],
@@ -804,6 +804,28 @@ def batch_compress_files(rootdir, threshold=7.0, remove_original=False, verbose=
                         print_error(f'Failed to remove {src}: {str(e)}')
 
 
+def batch_decompress_files(src_dir, dest_dir, keep=False, verbose=False):
+    check_src_and_make_dest(src_dir, dest_dir)
+    for dirpath, _, filenames in os.walk(src_dir):
+        abs_dir_path = os.path.abspath(dirpath)
+        for filename in filenames:
+            ext = os.path.splitext(filename)[1]
+            if ext not in FILE_CATEGORIES.get('ARCHIVE_EXTENSIONS'):
+                continue
+
+            file_path = os.path.join(abs_dir_path, filename)
+
+            try:
+                if verbose:
+                    print(f'decompress {file_path}')
+                shutil.unpack_archive(file_path, dest_dir)
+
+                if not keep:
+                    os.remove(file_path)
+            except ValueError:
+                print_error(f'Unsupported compressed format: {ext}')
+
+
 def batch_encrypt_files(rootdir, password, pattern=None, verbose=False):
     check_dir(rootdir)
     for root, _, files in os.walk(rootdir):
@@ -1007,6 +1029,15 @@ def handle_compress(args):
         args.rootdir,
         threshold=args.threshold,
         remove_original=args.remove,
+        verbose=args.verbose
+    )
+
+
+def handle_decompress(args):
+    batch_decompress_files(
+        args.src,
+        args.dest,
+        keep=args.keep,
         verbose=args.verbose
     )
 
@@ -1476,6 +1507,28 @@ def main():
         help='Show detailed processing information'
     )
 
+    # decompress options
+    decompress_parser = subparsers.add_parser(
+        'decompress',
+        help='Batch decompress files'
+    )
+    decompress_parser.add_argument(
+        '-s', '--src', required=True,
+        help='Source directory'
+    )
+    decompress_parser.add_argument(
+        '-d', '--dest', required=True,
+        help='Destination directory'
+    )
+    decompress_parser.add_argument(
+        '-k', '--keep', action='store_true',
+        help='Keep original files'
+    )
+    decompress_parser.add_argument(
+        '-v', '--verbose', action='store_true',
+        help='Show detail'
+    )
+
     # encrypt options
     encrypt_parser = subparsers.add_parser(
         'encrypt', help='Batch encrypt files'
@@ -1563,6 +1616,7 @@ def main():
         'deduplicate': handle_deduplicate,
         'hash': handle_hash,
         'compress': handle_compress,
+        'decompress': handle_decompress,
         'encrypt': handle_encrypt,
         'decrypt': handle_decrypt,
         'convert': handle_convert,
