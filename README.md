@@ -39,3 +39,10 @@ positional arguments:
 options:
   -h, --help            show this help message and exit
 ```
+
+other exmaples for file convertion:
+
+```shell
+# python .\fbpt.py convert --src=.\tests\srcPdf\ --dest=.\tests\destDocx\ --type=pdf_to_docx
+# python .\fbpt.py convert --src=.\tests\srcDocx\ --dest=.\tests\destPdf\ --type=word_to_pdf --wordApp=WPS
+```
