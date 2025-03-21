@@ -311,6 +311,10 @@ def pdf_to_docx(source_file, target_file):
 
 
 def word_to_pdf(source_file, target_file, word_app):
+    if sys.platform != 'win32':
+        print_error(f'Error: This feature is only available on Windows.')
+        exit(1)
+
     try:
         from win32com import client as wc
     except ImportError:
@@ -1594,7 +1598,7 @@ def main():
         help='Recursively convert files in subdirectories'
     )
     convert_parser.add_argument(
-        '--wordapp', default='MS',
+        '--wordapp', default='MS', choices=list(WORD_APPLICATIONS.keys()),
         help='using Microsoft office or WPS office to convert file'
     )
 
