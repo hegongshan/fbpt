@@ -60,6 +60,11 @@ CONVERSION_MAP = {
     }
 }
 
+WORD_APPLICATIONS = {
+    "MS": "Word.Application",
+    "WPS": "kwps.Application"
+}
+
 COLOR_RED = '\033[91m'
 COLOR_GREEN = '\033[92m'
 COLOR_YELLOW = '\033[93m'
@@ -305,7 +310,7 @@ def pdf_to_docx(source_file, target_file):
         print_error(f'Failed to convert PDF {source_file} to Docx: {str(e)}')
 
 
-def word_to_pdf(source_file, target_file):
+def word_to_pdf(source_file, target_file, word_app):
     try:
         from win32com import client as wc
     except ImportError:
@@ -314,7 +319,7 @@ def word_to_pdf(source_file, target_file):
         exit(1)
 
     try:
-        word = wc.Dispatch('Word.Application')
+        word = wc.Dispatch(WORD_APPLICATIONS[word_app])
         doc = word.Documents.Open(os.path.abspath(source_file))
         doc.SaveAs(os.path.abspath(target_file), FileFormat=17)
         doc.Close()
@@ -862,7 +867,7 @@ def batch_decrypt_files(rootdir, password, pattern=None, verbose=False):
                 print_error(f'Decryption failed for {input_path}: {str(e)}')
 
 
-def batch_convert_files(src_dir, dest_dir, conversion_type, format='PNG', recursive=False):
+def batch_convert_files(src_dir, dest_dir, conversion_type, format='PNG', recursive=False, word_app='MS'):
     check_src_and_make_dest(src_dir, dest_dir)
     for root, dirs, files in os.walk(src_dir):
         if not recursive and root != src_dir:
@@ -883,7 +888,7 @@ def batch_convert_files(src_dir, dest_dir, conversion_type, format='PNG', recurs
                 elif conversion_type == 'pdf_to_docx':
                     pdf_to_docx(source_file, target_file)
                 elif conversion_type == 'word_to_pdf':
-                    word_to_pdf(source_file, target_file)
+                    word_to_pdf(source_file, target_file, word_app)
                 elif conversion_type == 'excel_to_csv':
                     excel_to_csv(source_file, target_file)
                 elif conversion_type == 'md_to_html':
@@ -1073,7 +1078,7 @@ def handle_decrypt(args):
 def handle_convert(args):
     batch_convert_files(
         args.src, args.dest, conversion_type=args.type,
-        format=args.format.upper(), recursive=args.recursive
+        format=args.format.upper(), recursive=args.recursive, word_app=args.wordapp
     )
 
 
@@ -1587,6 +1592,10 @@ def main():
     convert_parser.add_argument(
         '-r', '--recursive', action='store_true',
         help='Recursively convert files in subdirectories'
+    )
+    convert_parser.add_argument(
+        '--wordapp', default='MS',
+        help='using Microsoft office or WPS office to convert file'
     )
 
     args = parser.parse_args()

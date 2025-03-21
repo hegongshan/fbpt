@@ -40,3 +40,10 @@ positional arguments:
 options:
   -h, --help            show this help message and exit
 ```
+
+exmaples of using argument `convert`:
+
+```shell
+# ./fbpt convert --src=./tests/srcPdf/ --dest=./tests/destDocx/ --type=pdf_to_docx
+# ./fbpt convert --src=./tests/srcDocx/ --dest=./tests/destPdf/ --type=word_to_pdf --wordapp=WPS
+```
