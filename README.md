@@ -46,4 +46,7 @@ exmaples of using argument `convert`:
 ```shell
 $ ./fbpt convert --src=./tests/srcPdf/ --dest=./tests/destDocx/ --type=pdf_to_docx
 $ ./fbpt convert --src=./tests/srcDocx/ --dest=./tests/destPdf/ --type=word_to_pdf --wordapp=WPS
+
+$ ./fbpt convert --src=./tests/srcImgs/ --dest=./tests/destPdf/ --type=imgs_to_pdf
+Converted 4 images into a PDF file: ./tests/destPdf/img.001.pdf
 ```
