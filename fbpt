@@ -57,12 +57,16 @@ CONVERSION_MAP = {
     'md_to_html': {
         'extensions': ['.md'],
         'target_ext': '.html'
+    },
+    'imgs_to_pdf': {
+        'extensions': ['.png', '.jpg', '.jpeg', '.bmp', '.gif'],
+        'target_ext': '.pdf'
     }
 }
 
 WORD_APPLICATIONS = {
-    "MS": "Word.Application",
-    "WPS": "kwps.Application"
+    'MS': 'Word.Application',
+    'WPS': 'kwps.Application'
 }
 
 COLOR_RED = '\033[91m'
@@ -366,6 +370,28 @@ def markdown_to_html(source_file, target_file):
         print(f'Converted Markdown {source_file} to HTML.')
     except Exception as e:
         print_error(f'Failed to convert Markdown {source_file} to HTML: {str(e)}')
+
+def images_to_pdf(source_imgs, target_pdf_path):
+    try:
+        from PIL import Image
+    except ImportError:
+        print_error('Error: No module named PIL. '
+                    f'Please run "{PIP} install Pillow".')
+        exit(1)
+
+    try:
+        images = [Image.open(img) for img in source_imgs]
+        pdf_images = [img.convert('RGB') for img in images]
+
+        # merge multiple images and save them as a new PDF
+        pdf_images[0].save(
+            target_pdf_path,
+            save_all=True,
+            append_images=pdf_images[1:]
+        )
+        print(f'Converted {len(source_imgs)} images into a PDF file: {target_pdf_path}')
+    except Exception as e:
+        print_error(f'Failed to convert images into a PDF file: {str(e)}')
 
 
 ##################################################################
@@ -872,17 +898,28 @@ def batch_decrypt_files(rootdir, password, pattern=None, verbose=False):
 
 
 def batch_convert_files(src_dir, dest_dir, conversion_type, format='PNG', recursive=False, word_app='MS'):
+    config = CONVERSION_MAP.get(conversion_type)
+    if config is None:
+        print_error(f'Unsupported conversion type: {conversion_type}')
+        return
+
     check_src_and_make_dest(src_dir, dest_dir)
+
     for root, dirs, files in os.walk(src_dir):
         if not recursive and root != src_dir:
             continue
+        elif conversion_type == 'imgs_to_pdf':
+            files =  map(lambda y: os.path.join(root, y), filter(lambda x: os.path.splitext(x)[-1].lower() in config['extensions'], files))
+            files = list(files)
+            if len(files) > 0:
+                target_file_name = os.path.splitext(os.path.split(files[0])[1])[0] + config['target_ext']
+                target_file = os.path.join(dest_dir, target_file_name)
+                images_to_pdf(files, target_file)
+            continue
+
         for file in files:
             source_file = os.path.join(root, file)
             file_ext = os.path.splitext(file)[1].lower()
-            config = CONVERSION_MAP.get(conversion_type)
-            if config is None:
-                print_error(f'Unsupported conversion type: {conversion_type}')
-                return
             if file_ext in config['extensions']:
                 target_file_name = os.path.splitext(file)[0] + config['target_ext']
                 target_file = os.path.join(dest_dir, target_file_name)
