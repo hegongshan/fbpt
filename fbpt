@@ -127,6 +127,11 @@ def check_src_and_make_dest(src_dir, dest_dir):
         exit(1)
 
 
+def has_required_ext(filename, extensions):
+    ext = os.path.splitext(filename)[-1]
+    return ext and ext.lower() in extensions
+
+
 def get_chunk_number(filepath, chunk_size):
     file_size = os.path.getsize(filepath)
     return (file_size + chunk_size - 1) // chunk_size
@@ -316,7 +321,7 @@ def pdf_to_docx(source_file, target_file):
 
 def word_to_pdf(source_file, target_file, word_app):
     if sys.platform != 'win32':
-        print_error(f'Error: This feature is only available on Windows.')
+        print_error('Error: This feature is only available on Windows.')
         exit(1)
 
     try:
@@ -370,6 +375,7 @@ def markdown_to_html(source_file, target_file):
         print(f'Converted Markdown {source_file} to HTML.')
     except Exception as e:
         print_error(f'Failed to convert Markdown {source_file} to HTML: {str(e)}')
+
 
 def images_to_pdf(source_imgs, target_pdf_path):
     try:
@@ -899,7 +905,7 @@ def batch_decrypt_files(rootdir, password, pattern=None, verbose=False):
 
 def batch_convert_files(src_dir, dest_dir, conversion_type, format='PNG', recursive=False, word_app='MS'):
     config = CONVERSION_MAP.get(conversion_type)
-    if config is None:
+    if not config:
         print_error(f'Unsupported conversion type: {conversion_type}')
         return
 
@@ -908,32 +914,34 @@ def batch_convert_files(src_dir, dest_dir, conversion_type, format='PNG', recurs
     for root, dirs, files in os.walk(src_dir):
         if not recursive and root != src_dir:
             continue
-        elif conversion_type == 'imgs_to_pdf':
-            files =  map(lambda y: os.path.join(root, y), filter(lambda x: os.path.splitext(x)[-1].lower() in config['extensions'], files))
-            files = list(files)
-            if len(files) > 0:
-                target_file_name = os.path.splitext(os.path.split(files[0])[1])[0] + config['target_ext']
+
+        if conversion_type == 'imgs_to_pdf':
+            files = list(map(lambda y: os.path.join(root, y),
+                             filter(lambda name: has_required_ext(name, config['extensions']), files)))
+            if files:
+                target_file_name = os.path.splitext(os.path.basename(files[0]))[0] + config['target_ext']
                 target_file = os.path.join(dest_dir, target_file_name)
                 images_to_pdf(files, target_file)
             continue
 
         for file in files:
+            if not has_required_ext(file, config['extensions']):
+                continue
+
             source_file = os.path.join(root, file)
-            file_ext = os.path.splitext(file)[1].lower()
-            if file_ext in config['extensions']:
-                target_file_name = os.path.splitext(file)[0] + config['target_ext']
-                target_file = os.path.join(dest_dir, target_file_name)
-                print(f'Converting {source_file} to {target_file} using {conversion_type}')
-                if conversion_type == 'image':
-                    convert_image_format(source_file, target_file, format)
-                elif conversion_type == 'pdf_to_docx':
-                    pdf_to_docx(source_file, target_file)
-                elif conversion_type == 'word_to_pdf':
-                    word_to_pdf(source_file, target_file, word_app)
-                elif conversion_type == 'excel_to_csv':
-                    excel_to_csv(source_file, target_file)
-                elif conversion_type == 'md_to_html':
-                    markdown_to_html(source_file, target_file)
+            target_file_name = os.path.splitext(file)[0] + config['target_ext']
+            target_file = os.path.join(dest_dir, target_file_name)
+            print(f'Converting {source_file} to {target_file} using {conversion_type}')
+            if conversion_type == 'image':
+                convert_image_format(source_file, target_file, format)
+            elif conversion_type == 'pdf_to_docx':
+                pdf_to_docx(source_file, target_file)
+            elif conversion_type == 'word_to_pdf':
+                word_to_pdf(source_file, target_file, word_app)
+            elif conversion_type == 'excel_to_csv':
+                excel_to_csv(source_file, target_file)
+            elif conversion_type == 'md_to_html':
+                markdown_to_html(source_file, target_file)
 
 
 ##################################################################
