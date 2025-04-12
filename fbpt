@@ -9,6 +9,7 @@ import math
 import os
 import re
 import shutil
+import stat
 import sys
 import zipfile
 from collections import defaultdict
@@ -130,6 +131,20 @@ def check_src_and_make_dest(src_dir, dest_dir):
 def has_required_ext(filename, extensions):
     ext = os.path.splitext(filename)[-1]
     return ext and ext.lower() in extensions
+
+
+def is_hidden(pathname):
+    if not pathname or not os.path.exists(pathname):
+        return False
+
+    stat_result = os.lstat(pathname)
+    if sys.platform == 'win32':
+        return stat_result.st_file_attributes & stat.FILE_ATTRIBUTE_HIDDEN
+
+    if sys.platform == 'darwin' and (stat_result.st_flags & stat.UF_HIDDEN):
+        return True
+
+    return os.path.basename(pathname)[0] == '.'
 
 
 def get_chunk_number(filepath, chunk_size):
@@ -469,8 +484,8 @@ def batch_mkdir(rootdir, prefix, width, depth=1):
     for cur_depth in range(depth):
         new_dirs = []
         for dirname in dirs:
+            cur_prefix = prefix if cur_depth == 0 else os.path.basename(dirname)
             for idx in range(width):
-                cur_prefix = prefix if cur_depth == 0 else os.path.basename(dirname)
                 dirpath = os.path.join(dirname, f'{cur_prefix}_{idx}')
                 mkdir_if_not_exists(dirpath)
                 new_dirs.append(dirpath)
@@ -569,9 +584,10 @@ def batch_move_files(src_dir, dest_dir, pattern=None, verbose=False):
 def batch_split_files_by_line(src_dir, dest_dir, line_count, verbose=False):
     check_src_and_make_dest(src_dir, dest_dir)
     for filename in os.listdir(src_dir):
-        if filename[0] == '.':
-            continue
         pathname = os.path.join(src_dir, filename)
+        if is_hidden(pathname):
+            continue
+
         with open(pathname, 'r') as file:
             chunk_id = 0
             chunk_data = file.readlines(line_count)
@@ -588,9 +604,10 @@ def batch_split_files_by_line(src_dir, dest_dir, line_count, verbose=False):
 def batch_split_files_by_byte(src_dir, dest_dir, chunk_size, verbose=False):
     check_src_and_make_dest(src_dir, dest_dir)
     for filename in os.listdir(src_dir):
-        if filename[0] == '.':
-            continue
         pathname = os.path.join(src_dir, filename)
+        if is_hidden(pathname):
+            continue
+
         file_size = os.path.getsize(pathname)
         chunk_number = (file_size + chunk_size - 1) // chunk_size
         with open(pathname, 'rb') as file:
@@ -614,11 +631,11 @@ def batch_merge_files(src_dir, output_file, pattern=None, verbose=False):
 
     with open(output_file, 'wb') as outfile:
         for filename in sorted(os.listdir(src_dir), key=file_sort_order):
-            if filename[0] == '.':
+            pathname = os.path.join(src_dir, filename)
+            if is_hidden(pathname):
                 continue
             if pattern and not re.search(pattern, filename, re.IGNORECASE):
                 continue
-            pathname = os.path.join(src_dir, filename)
             if verbose:
                 print(f'merge {pathname}')
             with open(pathname, 'rb') as infile:
