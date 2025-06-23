@@ -677,26 +677,15 @@ def batch_replace_files(rootdir, pattern, replace):
         for filename in filenames:
             file_path = os.path.join(dirpath, filename)
             tmp_file_path = os.path.join(dirpath, f'{filename}.tmp')
-            try:
-                with open(file_path, 'r', encoding='utf-8') as infile:
-                    with open(tmp_file_path, 'w', encoding='utf-8') as outfile:
-                        while True:
-                            chunk_data = infile.read(DEFAULT_CHUNK_SIZE)
-                            if not chunk_data:
-                                break
-                            replaced_chunk_data = re.sub(pattern, replace, chunk_data)
-                            outfile.write(replaced_chunk_data)
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                os.rename(tmp_file_path, file_path)
-            except (UnicodeDecodeError, UnicodeEncodeError):
-                if os.path.exists(tmp_file_path):
-                    os.remove(tmp_file_path)
-                print_warning(f'Skipped binary file: {file_path}')
-            except Exception as e:
-                if os.path.exists(tmp_file_path):
-                    os.remove(tmp_file_path)
-                print_error(f'Error processing {file_path}: {str(e)}')
+            num_chunk = get_chunk_number(file_path, DEFAULT_CHUNK_SIZE)
+            with open(file_path, 'r', encoding='utf-8') as infile:
+                with open(tmp_file_path, 'w', encoding='utf-8') as outfile:
+                    for i in range(num_chunk):
+                        chunk_data = infile.read(DEFAULT_CHUNK_SIZE)
+                        replaced_chunk_data = re.sub(pattern, replace, chunk_data)
+                        outfile.write(replaced_chunk_data)
+            os.remove(file_path)
+            os.rename(tmp_file_path, file_path)
 
 
 def batch_file_name_check(rootdir, pattern):
@@ -914,7 +903,7 @@ def batch_encrypt_files(rootdir, password, pattern=None, verbose=False, keep_ori
                 print_error(f'Encryption failed for {input_path}: {str(e)}')
 
 
-def batch_decrypt_files(rootdir, password, pattern=None, keep_origin=None, verbose=False):
+def batch_decrypt_files(rootdir, password, pattern=None, keep_original=None, verbose=False):
     check_dir(rootdir)
     for root, _, files in os.walk(rootdir):
         for filename in files:
@@ -926,7 +915,7 @@ def batch_decrypt_files(rootdir, password, pattern=None, keep_origin=None, verbo
             output_path = input_path[:-4]
             try:
                 decrypt_file(input_path, output_path, password)
-                if not keep_origin:
+                if not keep_original:
                     os.remove(input_path)
                 if verbose:
                     print(f'Decrypted {input_path} -> {output_path}')
@@ -1152,7 +1141,7 @@ def handle_decrypt(args):
         args.rootdir,
         password,
         pattern=args.pattern,
-        keep_origin=args.keep,
+        keep_original=args.keep,
         verbose=args.verbose
     )
 
