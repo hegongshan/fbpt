@@ -883,7 +883,7 @@ def batch_decompress_files(src_dir, dest_dir, keep=False, verbose=False):
                 print_error(f'Unsupported compressed format: {ext}')
 
 
-def batch_encrypt_files(rootdir, password, pattern=None, verbose=False, keep_original=False):
+def batch_encrypt_files(rootdir, password, pattern=None, keep_original=False, verbose=False):
     check_dir(rootdir)
     for root, _, files in os.walk(rootdir):
         for filename in files:
@@ -903,7 +903,7 @@ def batch_encrypt_files(rootdir, password, pattern=None, verbose=False, keep_ori
                 print_error(f'Encryption failed for {input_path}: {str(e)}')
 
 
-def batch_decrypt_files(rootdir, password, pattern=None, keep_original=None, verbose=False):
+def batch_decrypt_files(rootdir, password, pattern=None, keep_original=False, verbose=False):
     check_dir(rootdir)
     for root, _, files in os.walk(rootdir):
         for filename in files:
