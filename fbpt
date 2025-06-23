@@ -678,12 +678,13 @@ def batch_replace_files(rootdir, pattern, replace):
             file_path = os.path.join(dirpath, filename)
             tmp_file_path = os.path.join(dirpath, f'{filename}.tmp')
             num_chunk = get_chunk_number(file_path, DEFAULT_CHUNK_SIZE)
-            with open(tmp_file_path, 'w+') as outfile:
-                with open(file_path, 'r') as infile:
+            with open(file_path, 'r', encoding='utf-8') as infile:
+                with open(tmp_file_path, 'w', encoding='utf-8') as outfile:
                     for i in range(num_chunk):
                         chunk_data = infile.read(DEFAULT_CHUNK_SIZE)
                         replaced_chunk_data = re.sub(pattern, replace, chunk_data)
                         outfile.write(replaced_chunk_data)
+            os.remove(file_path)
             os.rename(tmp_file_path, file_path)
 
 
@@ -882,7 +883,7 @@ def batch_decompress_files(src_dir, dest_dir, keep=False, verbose=False):
                 print_error(f'Unsupported compressed format: {ext}')
 
 
-def batch_encrypt_files(rootdir, password, pattern=None, verbose=False):
+def batch_encrypt_files(rootdir, password, pattern=None, keep_original=False, verbose=False):
     check_dir(rootdir)
     for root, _, files in os.walk(rootdir):
         for filename in files:
@@ -894,13 +895,15 @@ def batch_encrypt_files(rootdir, password, pattern=None, verbose=False):
             output_path = f'{input_path}.enc'
             try:
                 encrypt_file(input_path, output_path, password)
+                if not keep_original:
+                    os.remove(input_path)
                 if verbose:
                     print(f'Encrypted {input_path} -> {output_path}')
             except Exception as e:
                 print_error(f'Encryption failed for {input_path}: {str(e)}')
 
 
-def batch_decrypt_files(rootdir, password, pattern=None, verbose=False):
+def batch_decrypt_files(rootdir, password, pattern=None, keep_original=False, verbose=False):
     check_dir(rootdir)
     for root, _, files in os.walk(rootdir):
         for filename in files:
@@ -912,6 +915,8 @@ def batch_decrypt_files(rootdir, password, pattern=None, verbose=False):
             output_path = input_path[:-4]
             try:
                 decrypt_file(input_path, output_path, password)
+                if not keep_original:
+                    os.remove(input_path)
                 if verbose:
                     print(f'Decrypted {input_path} -> {output_path}')
             except Exception as e:
@@ -1121,6 +1126,7 @@ def handle_encrypt(args):
         args.rootdir,
         password,
         pattern=args.pattern,
+        keep_original=args.keep,
         verbose=args.verbose
     )
 
@@ -1135,6 +1141,7 @@ def handle_decrypt(args):
         args.rootdir,
         password,
         pattern=args.pattern,
+        keep_original=args.keep,
         verbose=args.verbose
     )
 
@@ -1611,6 +1618,10 @@ def main():
         help='File matching pattern (e.g., \'*.txt\')'
     )
     encrypt_parser.add_argument(
+        '-k', '--keep', action='store_true',
+        help='Keep original files'
+    )
+    encrypt_parser.add_argument(
         '-v', '--verbose', action='store_true',
         help='Verbose mode'
     )
@@ -1626,6 +1637,10 @@ def main():
     decrypt_parser.add_argument(
         '-p', '--pattern', type=str,
         help='File matching pattern (e.g., \'*.enc\')'
+    )
+    decrypt_parser.add_argument(
+        '-k', '--keep', action='store_true',
+        help='Keep original files'
     )
     decrypt_parser.add_argument(
         '-v', '--verbose', action='store_true',
