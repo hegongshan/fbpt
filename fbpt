@@ -1223,12 +1223,7 @@ def main():
         '-p', '--prefix', type=str, required=True,
         help='File name prefix'
     )
-    create_group = create_parser.add_mutually_exclusive_group()
-    create_group.add_argument(
-        '-m', '--mkdir', action='store_true',
-        help='Create directory (default creates file)'
-    )
-    create_group.add_argument(
+    create_parser.add_argument(
         '-e', '--ext', type=str,
         help='File extension'
     )
